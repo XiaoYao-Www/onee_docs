@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每日知識庫</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="light-theme">
+
+    <!-- ════ 全域懸浮搜尋層（預設隱藏） ════ -->
+    <div id="search-overlay" class="search-overlay" style="display:none;">
+        <div class="search-bar-container">
+            <input id="search-input" type="text" class="search-input"
+                   placeholder="搜尋文章名稱或內容…" autocomplete="off" spellcheck="false">
+            <button id="search-close" class="search-close-btn" title="關閉搜尋">✕</button>
+        </div>
+        <div id="search-results" class="search-results"></div>
+    </div>
+
+    <!-- ════ 側邊欄（抽屜式導航） ════ -->
+    <nav id="sidebar" class="collapsed">
+        <div id="sidebar-content">
+            <h1 class="site-title">每日知識庫</h1>
+
+            <div class="sidebar-block toc-section">
+                <h3>📌 文章大綱</h3>
+                <ul id="toc-list"></ul>
+            </div>
+
+            <div class="sidebar-block article-section">
+                <h3>📁 文章列表</h3>
+                <ul id="article-list"></ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ════ 主要閱讀區 ════ -->
+    <main id="main-content">
+        <div id="article-breadcrumb" class="breadcrumb-bar">📖 請選擇文章</div>
+        <article id="article-body">
+            <p>📖 請點擊右下角按鈕展開選單，並選擇一篇文章來閱讀。</p>
+        </article>
+    </main>
+
+    <!-- ════ 右下角懸浮操作中心 (FAB) ════ -->
+    <div id="fab-container" class="fab-container">
+        <div id="fab-menu" class="fab-menu">
+
+            <!-- 0. 搜尋按鈕（最上方） -->
+            <button id="fab-search" class="fab-action-btn" title="搜尋文章">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </button>
+
+            <!-- 1. 分享按鈕（預設隱藏） -->
+            <button id="btn-share" class="fab-action-btn" title="複製文章連結" style="display:none;">
+                <span id="share-icon-container">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                </span>
+            </button>
+
+            <!-- 2. 字體放大 -->
+            <button id="btn-font-inc" class="fab-action-btn" title="放大字體">
+                <span style="font-weight:700; font-size:15px; font-family:sans-serif;">A+</span>
+            </button>
+
+            <!-- 3. 字體縮小 -->
+            <button id="btn-font-dec" class="fab-action-btn" title="縮小字體">
+                <span style="font-weight:700; font-size:13px; font-family:sans-serif;">A-</span>
+            </button>
+
+            <!-- 4. 切換主題 -->
+            <button id="btn-theme" class="fab-action-btn" title="切換深色/淺色主題">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            </button>
+
+            <!-- 5. 開關側邊欄 -->
+            <button id="fab-sidebar-toggle" class="fab-action-btn" title="展開/收合選單">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+        </div>
+
+        <!-- 主懸浮開關 -->
+        <button id="fab-toggle" class="fab-toggle-btn" title="操作選單">
+            <svg id="fab-toggle-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+        </button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

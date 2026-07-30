@@ -1,0 +1,457 @@
+/* 定義主題變數 */
+:root {
+    --bg-color: #f8f9fa;
+    --text-color: #2c3e50;
+    --sidebar-bg: #edf2f7;
+    --sidebar-border: #e2e8f0;
+    --card-bg: #ffffff;
+    --card-border: #e2e8f0;
+    --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    --link-color: #2563eb;
+    --accent-color: #3b82f6;
+    --subtext-color: #64748b;
+    --base-font-size: 16px;
+    --sidebar-width: 320px;
+    
+    /* 懸浮按鈕毛玻璃專用變數 */
+    --fab-bg-closed: rgba(255, 255, 255, 0.4);
+    --fab-bg-open: rgba(255, 255, 255, 0.85);
+    --fab-blur-closed: blur(4px);
+    --fab-blur-open: blur(16px);
+    --fab-border: rgba(255, 255, 255, 0.5);
+    --fab-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+body.dark-theme {
+    --bg-color: #121212;
+    --text-color: #e2e8f0;
+    --sidebar-bg: #1e1e1e;
+    --sidebar-border: #2d3748;
+    --card-bg: #262930;
+    --card-border: #333a48;
+    --card-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    --link-color: #60a5fa;
+    --accent-color: #3b82f6;
+    --subtext-color: #94a3b8;
+
+    /* 深色模式毛玻璃專用變數 */
+    --fab-bg-closed: rgba(38, 41, 48, 0.4);
+    --fab-bg-open: rgba(30, 32, 38, 0.85);
+    --fab-border: rgba(255, 255, 255, 0.1);
+    --fab-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-size: var(--base-font-size);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+/* ================= 側邊欄樣式 ================= */
+#sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: var(--sidebar-width);
+    display: flex;
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--sidebar-border);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 100;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
+    will-change: transform;
+}
+
+#sidebar.collapsed {
+    transform: translateX(-100%);
+}
+
+#sidebar-content {
+    width: 100%;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+/* 側邊欄內部元素略 (保持原樣，減少贅述) */
+.site-title { font-size: 1.25rem; margin-top: 4px; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid var(--sidebar-border); color: var(--text-color); }
+.sidebar-block { background-color: var(--card-bg); border: 1px solid var(--sidebar-border); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+.sidebar-block h3 { font-size: 0.85rem; margin-top: 0; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px dashed var(--sidebar-border); color: var(--subtext-color); }
+button { background: transparent; color: var(--text-color); border: 1px solid var(--sidebar-border); padding: 6px 12px; cursor: pointer; border-radius: 6px; font-size: 0.85em; transition: background-color 0.2s; }
+button:hover { background-color: rgba(128, 128, 128, 0.15); }
+.font-controls { display: flex; gap: 6px; margin-top: 6px; }
+ul { list-style: none; padding-left: 0; margin: 0; }
+li { margin-bottom: 8px; font-size: 0.9em; }
+li a { color: var(--link-color); text-decoration: none; }
+li a:hover { text-decoration: underline; }
+#article-list li { cursor: pointer; color: var(--link-color); padding: 2px 0; }
+#article-list li:hover { text-decoration: underline; }
+#article-list li.date-group-header { cursor: default; color: var(--subtext-color); font-weight: bold; font-size: 0.78rem; margin-top: 10px; margin-bottom: 4px; padding-top: 6px; border-top: 1px solid var(--sidebar-border); }
+#article-list li.date-group-header:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+
+/* ================= 閱讀區極簡化優化 ================= */
+#main-content {
+    flex-grow: 1;
+    margin-left: 0;
+    /* 大幅減少上方留白 */
+    padding: 20px 48px 80px 48px; 
+    overflow-y: auto;
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    scroll-behavior: smooth;
+}
+
+#sidebar:not(.collapsed) ~ #main-content {
+    margin-left: var(--sidebar-width);
+}
+
+#article-body {
+    background-color: var(--card-bg);
+    border-radius: 12px;
+    padding: 32px 40px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+    line-height: 1.7;
+    /* 渲染優化：瀏覽器自動延遲渲染視窗外的內容 */
+    content-visibility: auto;
+}
+
+#article-body h1, #article-body h2 {
+    border-bottom: 1px solid var(--sidebar-border);
+    padding-bottom: 6px;
+    margin-top: 1.5em;
+}
+#article-body h1:first-child { margin-top: 0; }
+
+/* 麵包屑導覽條（獨立卡片區塊） */
+.breadcrumb-bar {
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-left: 5px solid var(--accent-color);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--card-shadow);
+    font-size: 0.82rem;
+    color: var(--subtext-color);
+    line-height: 1.4;
+}
+
+/* ================= 單一懸浮操作中心 (FAB) ================= */
+.fab-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 16px; /* 加大與主開關的距離 */
+    pointer-events: none; 
+}
+
+/* 移除原有的膠囊背景，改為單純的排版容器 */
+.fab-menu {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px; /* 獨立按鈕之間的間距 */
+    pointer-events: none;
+}
+
+/* 獨立圖示按鈕樣式 (將原本的膠囊背景移至獨立按鈕上) */
+.fab-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px; /* 稍微加大成為標準觸控尺寸 */
+    height: 44px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    color: var(--text-color);
+    cursor: pointer;
+    
+    /* 獨立毛玻璃與陰影效果 */
+    background: var(--fab-bg-open);
+    backdrop-filter: var(--fab-blur-open);
+    -webkit-backdrop-filter: var(--fab-blur-open);
+    border: 1px solid var(--fab-border);
+    box-shadow: var(--fab-shadow);
+    
+    /* 隱藏時的狀態：往下沉並縮小 */
+    opacity: 0;
+    transform: translateY(20px) scale(0.75);
+    pointer-events: none;
+    
+    /* 動畫設定 */
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    will-change: transform, opacity;
+}
+
+.fab-action-btn:hover {
+    background-color: var(--sidebar-border);
+    transform: scale(1.1);
+}
+
+.fab-action-btn:active {
+    transform: scale(0.9);
+}
+
+.fab-action-btn.copied {
+    color: #10b981;
+}
+
+/* 展開時的狀態 */
+.fab-container.open .fab-action-btn {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+/* --- 逐個彈出的延遲動畫 --- */
+/* 展開時 (由下而上：底部先出，頂部後出) */
+.fab-container.open .fab-action-btn:nth-last-child(1) { transition-delay: 0.00s; }
+.fab-container.open .fab-action-btn:nth-last-child(2) { transition-delay: 0.05s; }
+.fab-container.open .fab-action-btn:nth-last-child(3) { transition-delay: 0.10s; }
+.fab-container.open .fab-action-btn:nth-last-child(4) { transition-delay: 0.15s; }
+.fab-container.open .fab-action-btn:nth-last-child(5) { transition-delay: 0.20s; }
+.fab-container.open .fab-action-btn:nth-last-child(6) { transition-delay: 0.25s; }
+
+/* 收合時 (由上而下：頂部先收，底部後收) */
+.fab-container:not(.open) .fab-action-btn:nth-child(1) { transition-delay: 0.00s; }
+.fab-container:not(.open) .fab-action-btn:nth-child(2) { transition-delay: 0.05s; }
+.fab-container:not(.open) .fab-action-btn:nth-child(3) { transition-delay: 0.10s; }
+.fab-container:not(.open) .fab-action-btn:nth-child(4) { transition-delay: 0.15s; }
+.fab-container:not(.open) .fab-action-btn:nth-child(5) { transition-delay: 0.20s; }
+.fab-container:not(.open) .fab-action-btn:nth-child(6) { transition-delay: 0.25s; }
+
+
+/* 主懸浮開關 */
+.fab-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    pointer-events: auto;
+    
+    background: var(--fab-bg-closed);
+    backdrop-filter: var(--fab-blur-closed);
+    -webkit-backdrop-filter: var(--fab-blur-closed);
+    border: 1px solid var(--fab-border);
+    box-shadow: var(--fab-shadow);
+    color: var(--text-color);
+    cursor: pointer;
+    
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform, background, backdrop-filter;
+}
+
+.fab-toggle-btn:hover {
+    transform: scale(1.05);
+}
+
+.fab-toggle-btn:active {
+    transform: scale(0.95);
+}
+
+.fab-container.open .fab-toggle-btn {
+    background: var(--fab-bg-open);
+    backdrop-filter: var(--fab-blur-open);
+    -webkit-backdrop-filter: var(--fab-blur-open);
+    color: var(--accent-color);
+    transform: rotate(90deg); /* 點擊後旋轉成 X */
+}
+
+/* 確保 svg 在按鈕中完美置中 */
+.fab-action-btn svg, 
+.fab-action-btn span {
+    display: block;
+}
+
+/* ================= 全域懸浮搜尋層 ================= */
+.search-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2000;
+    background: rgba(0,0,0,0.3);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 10vh;
+    pointer-events: auto;
+}
+
+.search-bar-container {
+    display: flex;
+    align-items: center;
+    width: 90%;
+    max-width: 600px;
+    background: var(--card-bg);
+    border: 1px solid var(--sidebar-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+    padding: 4px 4px 4px 16px;
+    transition: box-shadow 0.2s;
+}
+
+.search-bar-container:focus-within {
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25), 0 0 0 2px var(--accent-color);
+}
+
+.search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 1.1rem;
+    color: var(--text-color);
+    padding: 12px 0;
+    font-family: inherit;
+}
+
+.search-input::placeholder {
+    color: var(--subtext-color);
+    opacity: 0.7;
+}
+
+.search-close-btn {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--subtext-color);
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+.search-close-btn:hover {
+    background-color: rgba(128,128,128,0.15);
+    color: var(--text-color);
+}
+
+/* 搜尋結果下拉 */
+.search-results {
+    display: none;
+    width: 90%;
+    max-width: 600px;
+    margin-top: 8px;
+    background: var(--card-bg);
+    border: 1px solid var(--sidebar-border);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.search-result-item {
+    padding: 12px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--sidebar-border);
+    transition: background-color 0.15s;
+}
+.search-result-item:last-child {
+    border-bottom: none;
+}
+.search-result-item:hover {
+    background-color: rgba(128,128,128,0.08);
+}
+.search-result-item.empty,
+.search-result-item.error {
+    cursor: default;
+    color: var(--subtext-color);
+    text-align: center;
+    padding: 24px 16px;
+}
+.search-result-item.error {
+    color: #ef4444;
+}
+
+.search-result-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 4px;
+}
+
+.search-result-date {
+    font-size: 0.78rem;
+    color: var(--subtext-color);
+    font-weight: 400;
+}
+
+.search-result-snippet {
+    font-size: 0.82rem;
+    color: var(--subtext-color);
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.search-result-snippet mark {
+    background: #fde68a;
+    color: #1e293b;
+    border-radius: 2px;
+    padding: 0 2px;
+}
+body.dark-theme .search-result-snippet mark {
+    background: #854d0e;
+    color: #fef9c3;
+}
+
+/* ================= 手機端極限版面優化 ================= */
+@media (max-width: 768px) {
+    :root {
+        --sidebar-width: 85vw;
+    }
+
+    /* 手機版：移除 main 的所有留白，讓閱讀卡片頂到邊緣 */
+    #main-content {
+        padding: 0; 
+        padding-bottom: 80px; /* 保留底部空間給 FAB */
+    }
+
+    #sidebar:not(.collapsed) ~ #main-content {
+        margin-left: 0;
+    }
+
+    #article-body {
+        padding: 16px 20px;
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+    }
+
+    /* 懸浮按鈕調整位置 */
+    .fab-container {
+        bottom: 16px;
+        right: 16px;
+    }
+
+    .fab-breadcrumb {
+        max-width: 150px;
+    }
+}
