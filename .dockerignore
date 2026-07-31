@@ -4,7 +4,8 @@
 .vscode/
 .reasonix/
 scripts/
-article/
+appdata/article/
+target/
 __pycache__/
 *.pyc
 *.pyo

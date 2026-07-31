@@ -16,6 +16,25 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # 依賴漏洞掃描（每次 push 執行）
+  security-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 預編譯二進位快速安裝 cargo-audit（避免 source 編譯耗時）
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit
+
   build-and-push-image:
     runs-on: ubuntu-latest
 

@@ -28,6 +28,8 @@ const ICON_CHECK = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="1
 
 let currentFontSize = 16;
 let allArticles = [];
+// 由 /api/config 提供；預設 false（安全）：文章中的 HTML 會被 DOMPurify 清除
+let allowMarkdownHtml = false;
 
 init();
 
@@ -39,7 +41,17 @@ async function init() {
     if (window.innerWidth < 768) {
         sidebar.classList.add('collapsed');
     }
-    await loadArticleIndex();
+    await Promise.all([loadConfig(), loadArticleIndex()]);
+}
+
+// 載入渲染設定；失敗時維持預設 false（安全優先）
+async function loadConfig() {
+    try {
+        const resp = await fetch('/api/config');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        allowMarkdownHtml = !!data.allow_markdown_html;
+    } catch { /* 保持預設 false */ }
 }
 
 async function loadArticleIndex() {
@@ -223,14 +235,19 @@ function renderSearchResults(results) {
         const titleLine = document.createElement('div');
         titleLine.className = 'search-result-title';
         const badge = r.match_in === 'title' ? '📄 ' : r.match_in === 'content' ? '📝 ' : '📑 ';
-        const dateTag = r.date ? `<span class="search-result-date">${r.date}</span> ` : '';
-        titleLine.innerHTML = `${dateTag}${badge}${r.title}`;
+        // 標題來自檔名（可能含 HTML 字元）— 一律以純文字呈現
+        titleLine.textContent = `${r.date ? r.date + ' ' : ''}${badge}${r.title}`;
         div.appendChild(titleLine);
 
         if (r.snippet) {
             const snip = document.createElement('div');
             snip.className = 'search-result-snippet';
-            snip.innerHTML = r.snippet;
+            // snippet 來自文章內容（未轉義）並含 <mark> 標記：
+            // 只允許 <mark>，其餘標籤與屬性（含 onerror 等事件）由 DOMPurify 清除
+            snip.innerHTML = DOMPurify.sanitize(r.snippet, {
+                ALLOWED_TAGS: ['mark'],
+                ALLOWED_ATTR: [],
+            });
             div.appendChild(snip);
         }
 
@@ -281,9 +298,9 @@ async function loadMarkdown(article) {
     history.replaceState(null, '', url);
 
     if (article.date) {
-        articleBreadcrumb.innerHTML = `📅 ${article.date} &nbsp;›&nbsp; 📁 ${article.title}`;
+        articleBreadcrumb.textContent = `📅 ${article.date} › 📁 ${article.title}`;
     } else {
-        articleBreadcrumb.innerHTML = `📁 ${article.title}`;
+        articleBreadcrumb.textContent = `📁 ${article.title}`;
     }
 
     if (btnShare) btnShare.style.display = 'flex';
@@ -296,13 +313,23 @@ async function loadMarkdown(article) {
         if (!response.ok) throw new Error('找不到檔案');
 
         const markdownText = await response.text();
-        articleBody.innerHTML = marked.parse(markdownText);
+        // 依設定決定是否淨化 Markdown 渲染結果：
+        // - allow_markdown_html=false（預設）：DOMPurify 清除 <script>/onerror 等活動 HTML
+        // - allow_markdown_html=true：原樣渲染（信任文章作者，可嵌入 iframe 等）
+        const rendered = marked.parse(markdownText);
+        articleBody.innerHTML = allowMarkdownHtml
+            ? rendered
+            : DOMPurify.sanitize(rendered);
 
         generateTOC();
         document.getElementById('main-content').scrollTo({ top: 0, behavior: 'smooth' });
 
     } catch (error) {
-        articleBody.innerHTML = `<p style="color:red;">載入失敗：請確認檔案 <b>${article.path}</b> 是否存在。</p>`;
+        articleBody.innerHTML = '';
+        const p = document.createElement('p');
+        p.style.color = 'red';
+        p.textContent = `載入失敗：請確認檔案 ${article.path} 是否存在。`;
+        articleBody.appendChild(p);
     }
 }
 

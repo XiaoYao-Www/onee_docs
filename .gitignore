@@ -1,3 +1,9 @@
 .vscode
 .reasonix
-article
+
+# 文章目錄（私有內容，不隨倉庫提交；可選：若想分享文章請移除此行）
+appdata/article
+
+# Added by cargo
+
+/target
