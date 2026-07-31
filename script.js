@@ -146,94 +146,236 @@ function setupSettings() {
     });
 }
 
-// ── 渲染文章列表 (實裝完美抽屜動畫) ─────────────────────────────
-function renderArticleList() {
-    articleListElement.innerHTML = '';
-    const pinned = allArticles.filter(a => !a.date);
-    const dated = allArticles.filter(a => a.date);
-
-    // 渲染置頂/無日期文章
-    pinned.forEach(article => {
-        const li = document.createElement('li');
-        li.textContent = article.title;
-        li.className = 'article-item pinned';
-        li.addEventListener('click', () => onArticleClick(article));
-        articleListElement.appendChild(li);
-    });
-
-    // 建立日期群組 (資料夾)
-    const groups = {};
-    dated.forEach(article => {
-        if (!groups[article.date]) groups[article.date] = [];
-        groups[article.date].push(article);
-    });
-
-    // 依照日期排序 (新到舊)
-    const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
-
-    // 渲染收納式資料夾（向下展開 + 依層級遞縮）
-    sortedDates.forEach((date, index) => {
-        const folder = document.createElement('li');
-        folder.className = 'folder';
-
-        const isCollapsed = index !== 0; // 第一項預設展開，其他收合
-
-        // 資料夾標題列（用 button 以支援鍵盤操作）
-        const folderHeader = document.createElement('button');
-        folderHeader.type = 'button';
-        folderHeader.className = `folder-header ${isCollapsed ? 'collapsed' : ''}`;
-        folderHeader.setAttribute('aria-expanded', String(!isCollapsed));
-        folderHeader.innerHTML = '<span class="folder-icon">▼</span><span class="folder-label"></span>';
-        folderHeader.querySelector('.folder-label').textContent = date;
-
-        // 內容容器：高度動畫目標（向下展開）
-        const folderBody = document.createElement('div');
-        folderBody.className = `folder-body ${isCollapsed ? 'collapsed' : ''}`;
-
-        // 子層級列表（依層級向後遞縮）
-        const folderItems = document.createElement('ul');
-        folderItems.className = 'folder-items';
-        groups[date].forEach(article => {
-            const li = document.createElement('li');
-            li.textContent = article.title;
-            li.className = 'article-item';
-            li.addEventListener('click', () => onArticleClick(article));
-            folderItems.appendChild(li);
-        });
-        folderBody.appendChild(folderItems);
-
-        // 點擊切換展開/收合（以實際內容高度做平滑動畫，所有瀏覽器皆可用）
-        folderHeader.addEventListener('click', () => {
-            const collapsing = !folderBody.classList.contains('collapsed');
-
-            if (collapsing) {
-                // 收起：先鎖定目前高度，強制 reflow 後再過渡到 0
-                folderBody.style.height = folderBody.scrollHeight + 'px';
-                void folderBody.offsetHeight;
-                folderBody.classList.add('collapsed');
-                folderBody.style.height = '0px';
-                folderHeader.classList.add('collapsed');
-                folderHeader.setAttribute('aria-expanded', 'false');
+function buildTree(articles) {
+    const root = {};
+    for (const article of articles) {
+        const parts = article.path.split('/');
+        let node = root;
+        parts.forEach((part, index) => {
+            const isFile = index === parts.length - 1;
+            if (isFile) {
+                node[part] = {
+                    type: 'file',
+                    article
+                };
             } else {
-                // 展開：先確保起點為 0px，移除 collapsed 後過渡到實際高度
-                folderBody.style.height = '0px';
-                void folderBody.offsetHeight;
-                folderBody.classList.remove('collapsed');
-                folderBody.style.height = folderBody.scrollHeight + 'px';
-                folderHeader.classList.remove('collapsed');
-                folderHeader.setAttribute('aria-expanded', 'true');
-                // 過渡結束後清除 inline height，還原為 auto
-                folderBody.addEventListener('transitionend', function onEnd(e) {
-                    if (e.propertyName !== 'height') return;
-                    folderBody.style.height = '';
-                }, { once: true });
+                node[part] ??= {
+                    type: 'folder',
+                    children: {}
+                };
+                node = node[part].children;
             }
         });
+    }
+    return root;
+}
 
-        folder.appendChild(folderHeader);
-        folder.appendChild(folderBody);
-        articleListElement.appendChild(folder);
+function renderTree(parent, node, depth = 0) {
+
+    Object.entries(node).forEach(([name, item]) => {
+
+
+        if (item.type === "folder") {
+
+
+            const folder = document.createElement("div");
+
+            folder.className = "tree-folder";
+
+            folder.style.setProperty(
+                "--depth",
+                depth
+            );
+
+
+
+            // 標題
+            const header = document.createElement("div");
+
+            header.className = "folder-header";
+
+            header.style.setProperty(
+                "--depth",
+                depth
+            );
+
+
+
+            const icon = document.createElement("span");
+
+            icon.className = "folder-icon";
+
+            icon.textContent = "▶";
+
+
+
+            const label = document.createElement("span");
+
+            label.textContent = name;
+
+
+
+            header.append(
+                icon,
+                label
+            );
+
+
+
+            // 子內容
+            const children = document.createElement("div");
+
+            children.className =
+                "folder-children";
+
+
+            children.style.height =
+                children.scrollHeight + "px";
+
+
+
+            renderTree(
+                children,
+                item.children,
+                depth + 1
+            );
+
+
+
+            // 點擊展開
+            header.addEventListener("click", () => {
+
+                const isOpen =
+                    children.style.height !== "0px";
+
+
+                if (isOpen) {
+
+                    // 收合
+
+                    children.style.height =
+                        children.scrollHeight + "px";
+
+
+                    requestAnimationFrame(() => {
+
+                        children.style.height =
+                            "0px";
+
+                    });
+
+
+                    icon.classList.remove("open");
+
+
+                } else {
+
+                    // 展開
+
+                    children.style.height =
+                        children.scrollHeight + "px";
+
+
+                    icon.classList.add("open");
+
+
+                    children.addEventListener(
+                        "transitionend",
+                        () => {
+
+                            children.style.height = "";
+
+                        },
+                        {
+                            once: true
+                        }
+                    );
+
+                }
+
+            });
+
+
+
+            folder.append(
+                header,
+                children
+            );
+
+
+            parent.appendChild(folder);
+
+
+
+        } else {
+
+
+
+            const file =
+                document.createElement("div");
+
+
+            file.className =
+                "tree-file";
+
+
+            file.style.setProperty(
+                "--depth",
+                depth
+            );
+
+
+
+            const icon =
+                document.createElement("span");
+
+            icon.className =
+                "file-icon";
+
+            icon.textContent =
+                "📄";
+
+
+
+            const title =
+                document.createElement("span");
+
+
+            title.textContent =
+                item.article.title;
+
+
+
+            file.append(
+                icon,
+                title
+            );
+
+
+
+            file.addEventListener(
+                "click",
+                () => {
+                    onArticleClick(
+                        item.article
+                    );
+                }
+            );
+
+
+            parent.appendChild(file);
+
+        }
+
     });
+
+}
+
+// ── 渲染文章列表 (實裝完美抽屜動畫) ─────────────────────────────
+function renderArticleList() {
+    articleListElement.innerHTML = "";
+    const tree = buildTree(allArticles);
+    renderTree(articleListElement, tree);
 }
 
 function setupShareButton() {
