@@ -1,8 +1,10 @@
 # ── 階段一：編譯 ──────────────────────────────────────────
-# 建置階段使用 root 進行編譯；rust:1.80 為明確版本標籤。
-# 若需最高可重現性，可用 `docker manifest inspect rust:1.80-slim-bookworm`
+# 建置階段使用 root 進行編譯；rust:1.88 為明確版本標籤。
+# 版本依據：Cargo.lock 鎖定的 tantivy 0.26.1 其 MSRV 為 1.86，
+# jieba-rs 0.10.3（傳遞依賴）為 edition 2024（需 1.85+），故選 1.88 並留緩衝。
+# 若需最高可重現性，可用 `docker manifest inspect rust:1.88-slim-bookworm`
 # 取得 digest 後 pin（如 `rust@sha256:…`）。
-FROM rust:1.80-slim-bookworm AS build
+FROM rust:1.88-slim-bookworm AS build
 
 WORKDIR /build
 
