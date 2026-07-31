@@ -3,7 +3,7 @@
 use crate::articles::{scan_articles, Article};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::RwLock;
 
@@ -12,10 +12,16 @@ const DEBOUNCE_DURATION: Duration = Duration::from_secs(2);
 /// 定時掃描間隔：兜底 notify 漏報（如 Docker overlay 掛載、部分平台限制）
 pub const PERIODIC_SCAN_INTERVAL: Duration = Duration::from_secs(30);
 
+/// refresh 回呼型別：每次掃描後以最新文章列表呼叫（供搜尋索引等下游重建）
+type RefreshHook = Box<dyn Fn(Vec<Article>) + Send + Sync>;
+
 /// 文章列表快取
 pub struct ArticleCache {
     articles: RwLock<Vec<Article>>,
     article_dir: PathBuf,
+    /// 每次 refresh 後呼叫的回呼（傳入最新文章列表），供搜尋索引等
+    /// 依賴同一變更訊號的下游同步重建。同步呼叫，回呼內可自行 spawn。
+    refresh_hook: Mutex<Option<RefreshHook>>,
 }
 
 impl ArticleCache {
@@ -25,7 +31,17 @@ impl ArticleCache {
         Self {
             articles: RwLock::new(articles),
             article_dir,
+            refresh_hook: Mutex::new(None),
         }
+    }
+
+    /// 設定 refresh 回呼：每次掃描（notify debounce / 定時）完成後，以最新
+    /// 文章列表呼叫一次。僅能設定一次；設定後不可移除。
+    pub fn set_refresh_hook<F>(&self, hook: F)
+    where
+        F: Fn(Vec<Article>) + Send + Sync + 'static,
+    {
+        *self.refresh_hook.lock().unwrap_or_else(|e| e.into_inner()) = Some(Box::new(hook));
     }
 
     /// 回傳文章列表（快取副本，不觸碰檔案系統）
@@ -33,10 +49,13 @@ impl ArticleCache {
         self.articles.read().await.clone()
     }
 
-    /// 全量重掃並原子替換快取
+    /// 全量重掃並原子替換快取，接著觸發 refresh 回呼
     pub async fn refresh(&self) {
         let articles = scan_articles(&self.article_dir);
-        *self.articles.write().await = articles;
+        *self.articles.write().await = articles.clone();
+        if let Some(hook) = self.refresh_hook.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            hook(articles);
+        }
     }
 
     /// 啟動 notify watcher（背景任務）：偵測 article/ 下 `.md` 檔案的
@@ -173,8 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn test_is_relevant_event() {
-        let mk = |kind: EventKind, path: &Path| Event {
+    fn test_is_relevant_event() {        let mk = |kind: EventKind, path: &Path| Event {
             kind,
             paths: vec![path.to_path_buf()],
             attrs: notify::event::EventAttributes::default(),
@@ -203,5 +221,28 @@ mod tests {
             EventKind::Access(AccessKind::Close(AccessMode::Any)),
             Path::new("/x/a.md")
         )));
+    }
+
+    /// refresh hook：每次 refresh 後以最新文章列表呼叫（驅動搜尋索引重建）
+    #[tokio::test]
+    async fn test_refresh_hook_called_with_latest_articles() {
+        let dir = temp_article_dir("hook");
+        fs::write(dir.join("a.md"), "# a").unwrap();
+        let cache = Arc::new(ArticleCache::new(dir.clone()));
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<usize>();
+        cache.set_refresh_hook(move |articles| {
+            let _ = tx.send(articles.len());
+        });
+
+        // 新增文章後 refresh → hook 收到最新數量（2）
+        fs::write(dir.join("b.md"), "# b").unwrap();
+        cache.refresh().await;
+        assert_eq!(rx.try_recv().unwrap(), 2);
+
+        // 快取本身也同步更新
+        assert_eq!(cache.get_articles().await.len(), 2);
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -16,7 +16,7 @@
 mod articles;
 mod cache;
 mod config;
-mod search;
+mod search_index;
 
 use articles::Article;
 use axum::extract::{ConnectInfo, Query, Request, State};
@@ -77,10 +77,15 @@ struct AppState {
     cache: Arc<cache::ArticleCache>,
     config: Arc<config::ServerConfig>,
     rate_limiter: Arc<RateLimiter>,
+    search_index: Arc<search_index::SearchIndex>,
 }
 
 impl AppState {
-    fn new(cache: Arc<cache::ArticleCache>, config: Arc<config::ServerConfig>) -> Self {
+    fn new(
+        cache: Arc<cache::ArticleCache>,
+        config: Arc<config::ServerConfig>,
+        search_index: Arc<search_index::SearchIndex>,
+    ) -> Self {
         let rate_limiter = Arc::new(RateLimiter::new(
             config.rate_limit.window_secs,
             config.rate_limit.max_requests,
@@ -89,6 +94,7 @@ impl AppState {
             cache,
             config,
             rate_limiter,
+            search_index,
         }
     }
 }
@@ -307,7 +313,7 @@ async fn handle_article(
 
 #[derive(Serialize)]
 struct SearchResponse {
-    results: Vec<search::SearchResult>,
+    results: Vec<search_index::SearchResult>,
 }
 
 async fn handle_search(
@@ -335,15 +341,8 @@ async fn handle_search(
         return json_error(StatusCode::BAD_REQUEST, "請求含有無效字元");
     }
 
-    // 搜尋為同步檔案系統 I/O（遍歷 + 讀檔）— 移入 spawn_blocking 避免阻塞 worker
-    let q_owned = q.to_string();
-    let max_results = state.config.search.max_results;
-    let article_dir = ARTICLE_DIR.clone();
-    let results = tokio::task::spawn_blocking(move || {
-        search::search_articles(&article_dir, &q_owned, max_results)
-    })
-    .await
-    .unwrap_or_default();
+    // 純記憶體索引查詢（Tantivy），不觸碰檔案系統
+    let results = state.search_index.search(q, state.config.search.max_results);
     (
         StatusCode::OK,
         [
@@ -495,10 +494,35 @@ async fn main() -> anyhow::Result<()> {
 
     // 建立文章快取：初始掃描 + notify 即時監控 + 定時掃描補漏
     let cache = Arc::new(cache::ArticleCache::new(ARTICLE_DIR.clone()));
+
+    // 建立記憶體全文搜尋索引（Tantivy + jieba），並以初始文章列表全量建索引
+    let search_index = Arc::new(search_index::SearchIndex::new()?);
+    {
+        let articles = cache.get_articles().await;
+        let si = Arc::clone(&search_index);
+        let ad = ARTICLE_DIR.clone();
+        let mfs = config.max_file_size as u64;
+        tokio::task::spawn_blocking(move || si.rebuild(&articles, &ad, mfs)).await?;
+    }
+
+    // 檔案變更（notify debounce / 定時掃描）→ 與文章列表共用同一訊號重建索引
+    {
+        let si = Arc::clone(&search_index);
+        let ad = ARTICLE_DIR.clone();
+        let mfs = config.max_file_size as u64;
+        cache.set_refresh_hook(move |articles| {
+            let si = Arc::clone(&si);
+            let ad = ad.clone();
+            tokio::spawn(async move {
+                let _ = tokio::task::spawn_blocking(move || si.rebuild(&articles, &ad, mfs)).await;
+            });
+        });
+    }
+
     cache.spawn_watcher();
     cache.spawn_periodic_scan(cache::PERIODIC_SCAN_INTERVAL);
 
-    let app = build_app(AppState::new(cache, Arc::clone(&config)));
+    let app = build_app(AppState::new(cache, Arc::clone(&config), search_index));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
 
     println!("🚀 每日知識庫伺服器已啟動");
@@ -526,14 +550,22 @@ mod tests {
     use tower::ServiceExt;
 
     /// 建構測試用 AppState（快取以真實 article/ 目錄做初始掃描）
-    fn test_state() -> AppState {
-        test_state_with(config::ServerConfig::default())
+    async fn test_state() -> AppState {
+        test_state_with(config::ServerConfig::default()).await
     }
 
-    /// 以指定設定建構測試用 AppState
-    fn test_state_with(config: config::ServerConfig) -> AppState {
+    /// 以指定設定建構測試用 AppState；搜尋索引以真實文章目錄重建
+    async fn test_state_with(config: config::ServerConfig) -> AppState {
         let cache = Arc::new(cache::ArticleCache::new(ARTICLE_DIR.clone()));
-        AppState::new(cache, Arc::new(config))
+        let search_index = Arc::new(search_index::SearchIndex::new().unwrap());
+        let articles = cache.get_articles().await;
+        let si = Arc::clone(&search_index);
+        let ad = ARTICLE_DIR.clone();
+        let mfs = config.max_file_size as u64;
+        tokio::task::spawn_blocking(move || si.rebuild(&articles, &ad, mfs))
+            .await
+            .unwrap();
+        AppState::new(cache, Arc::new(config), search_index)
     }
 
     /// 發送 HTTP 請求並回傳回應
@@ -545,7 +577,7 @@ mod tests {
     /// HTTP 層級整合測試：路徑安全、靜態白名單與編碼繞過防護
     #[tokio::test]
     async fn test_http_security_and_static() {
-        let app = build_app(test_state());
+        let app = build_app(test_state().await);
 
         // 安全拒絕用例：(uri, 期望狀態碼)
         let reject_cases = [
@@ -614,7 +646,7 @@ mod tests {
     /// HTTP 層級整合測試：正常 API 回應（依賴專案內的範例文章）
     #[tokio::test]
     async fn test_http_api_happy_path() {
-        let app = build_app(test_state());
+        let app = build_app(test_state().await);
 
         // 讀取真實文章（ASCII 路徑）
         let req = Request::builder()
@@ -682,7 +714,7 @@ mod tests {
     /// 安全回應頭：所有回應（靜態與 API）都應攜帶
     #[tokio::test]
     async fn test_security_headers_present() {
-        let app = build_app(test_state());
+        let app = build_app(test_state().await);
 
         // 靜態頁面
         let resp = get(&app, "/").await;
@@ -717,7 +749,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let state = test_state_with(config);
+        let state = test_state_with(config).await;
         let app = build_app(state.clone());
 
         // 前 3 個 API 請求放行
@@ -748,7 +780,7 @@ mod tests {
             max_file_size: 16, // 16 位元組
             ..Default::default()
         };
-        let app = build_app(test_state_with(config));
+        let app = build_app(test_state_with(config).await);
 
         let resp = get(&app, "/api/article?path=knowledges/20260730/learning-notes.md").await;
         assert_eq!(

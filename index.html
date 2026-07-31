@@ -13,7 +13,7 @@
         <div class="search-bar-container">
             <input id="search-input" type="text" class="search-input"
                    placeholder="搜尋文章名稱或內容…" autocomplete="off" spellcheck="false">
-            <button id="search-close" class="search-close-btn" title="關閉搜尋">✕</button>
+            <button id="search-close" class="search-close-btn" title="關閉搜尋">×</button>
         </div>
         <div id="search-results" class="search-results"></div>
     </div>
@@ -24,12 +24,13 @@
             <h1 class="site-title">每日知識庫</h1>
 
             <div class="sidebar-block toc-section">
-                <h3>📌 文章大綱</h3>
+                <h3>文章大綱</h3>
                 <ul id="toc-list"></ul>
             </div>
 
             <div class="sidebar-block article-section">
-                <h3>📁 文章列表</h3>
+                <h3>文章列表</h3>
+                <!-- 文章清單由 JavaScript 動態寫入 -->
                 <ul id="article-list"></ul>
             </div>
         </div>
@@ -37,9 +38,9 @@
 
     <!-- ════ 主要閱讀區 ════ -->
     <main id="main-content">
-        <div id="article-breadcrumb" class="breadcrumb-bar">📖 請選擇文章</div>
+        <div id="article-breadcrumb" class="breadcrumb-bar">請選擇文章</div>
         <article id="article-body">
-            <p>📖 請點擊右下角按鈕展開選單，並選擇一篇文章來閱讀。</p>
+            <p>請點擊右下角按鈕展開選單，並選擇一篇文章來閱讀。</p>
         </article>
     </main>
 
@@ -61,12 +62,12 @@
 
             <!-- 2. 字體放大 -->
             <button id="btn-font-inc" class="fab-action-btn" title="放大字體">
-                <span style="font-weight:700; font-size:15px; font-family:sans-serif;">A+</span>
+                <span style="font-weight:700; font-size:16px; font-family:sans-serif;">A+</span>
             </button>
 
             <!-- 3. 字體縮小 -->
             <button id="btn-font-dec" class="fab-action-btn" title="縮小字體">
-                <span style="font-weight:700; font-size:13px; font-family:sans-serif;">A-</span>
+                <span style="font-weight:700; font-size:16px; font-family:sans-serif;">A-</span>
             </button>
 
             <!-- 4. 切換主題 -->

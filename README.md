@@ -8,7 +8,7 @@
 - 📁 **自動掃描 + 快取** — 文章列表以記憶體快取提供，透過檔案監控（notify）即時更新，並以定時掃描補漏
 - 📅 **日期分組** — 支援 `appdata/article/knowledges/YYYYMMDD/` 目錄結構，按日期歸類
 - 🔗 **分享連結** — 每篇文章都有專屬 URL，可直接分享
-- 🔍 **全文搜尋** — `GET /api/search?q=…` 同時比對檔名與內容
+- 🔍 **全文搜尋** — Tantivy 全文檢索 + jieba 中文分詞（BM25 相關性排序、結果高亮）
 - ⚙️ **設定檔驅動** — `appdata/config/server_config.toml` 集中管理伺服器行為
 - 🐳 **Docker 部署** — 一鍵容器化，支援掛載外部文章目錄
 - 🔒 **安全設計** — 路徑穿越防護、Markdown HTML 預設禁用（DOMPurify 淨化）、非 root 執行、檔案大小限制、API 限速
@@ -96,7 +96,7 @@ docker run -d \
 |------|------|
 | `GET /api/articles` | 回傳文章列表 JSON（標題、路徑、日期） |
 | `GET /api/article?path=xxx.md` | 回傳指定 `.md` 檔案內容（純文字） |
-| `GET /api/search?q=關鍵字` | 搜尋文章（檔名 + 內容），結果上限可設定 |
+| `GET /api/search?q=關鍵字` | 搜尋文章（檔名 + 內容），Tantivy + jieba 分詞、BM25 相關性排序，結果上限可設定 |
 | `GET /api/config` | 回傳前端渲染所需設定（目前僅 `allow_markdown_html`） |
 | `GET /` 靜態檔案 | `index.html`、`style.css`、`script.js`、`vendor/*` |
 
@@ -118,7 +118,8 @@ cargo audit
 
 ### 技術棧
 
-- **後端**：Rust + [axum](https://github.com/tokio-rs/axum) + tokio（`src/main.rs`、`src/articles.rs`、`src/search.rs`、`src/cache.rs`、`src/config.rs`），檔案監控使用 [notify](https://github.com/notify-rs/notify)
+- **後端**：Rust + [axum](https://github.com/tokio-rs/axum) + tokio（`src/main.rs`、`src/articles.rs`、`src/cache.rs`、`src/config.rs`、`src/search_index.rs`），檔案監控使用 [notify](https://github.com/notify-rs/notify)
+- **全文搜尋**：[tantivy](https://github.com/quickwit-oss/tantivy) 記憶體索引 + [tantivy-jieba](https://github.com/jiegec/tantivy-jieba)（jieba-rs 中文分詞）；索引由檔案變更訊號（notify + 定時掃描）驅動自動重建，搜尋請求不觸碰檔案系統
 - **前端**：原生 JavaScript + CSS（無框架）
 - **Markdown 渲染**：Marked.js + DOMPurify（均固定版本本地化於 `vendor/`，無第三方 CDN 依賴）
 - **容器**：Docker（多階段構建：`rust:1.80-slim-bookworm` 編譯 → `debian:bookworm-slim` 執行）
@@ -129,7 +130,7 @@ cargo audit
 - **XSS 防護**：Markdown HTML 預設由 DOMPurify 淨化；所有前端動態內容以 `textContent` 呈現或白名單淨化
 - **供應鏈安全**：前端函式庫本地化並固定版本；CSP `script-src 'self'` 阻止外部腳本
 - **安全回應頭**：`Content-Security-Policy`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`、`Referrer-Policy: no-referrer`
-- **DoS 防護**：檔案大小上限（`take` 限流讀取，無 TOCTOU 窗口）、API 每 IP 滑動窗口限速、同步 I/O 置於 `spawn_blocking`
+- **DoS 防護**：檔案大小上限（`take` 限流讀取，無 TOCTOU 窗口）、API 每 IP 滑動窗口限速、搜尋與索引重建的同步 I/O 置於 `spawn_blocking`、搜尋請求本身為純記憶體查詢
 - **Docker**：多階段構建、非 root 使用者執行、`appdata/` 僅掛載文章目錄
 
 ### 部署安全建議

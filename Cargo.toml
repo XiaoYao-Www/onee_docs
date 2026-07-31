@@ -17,6 +17,8 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 anyhow = "1"
 toml = "0.9"
+tantivy = "0.26"
+tantivy-jieba = "0.20"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

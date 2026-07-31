@@ -38,13 +38,41 @@ async function init() {
     setupSettings();
     setupShareButton();
     setupSearch();
+    setupSwipeGestures();
     if (window.innerWidth < 768) {
         sidebar.classList.add('collapsed');
     }
     await Promise.all([loadConfig(), loadArticleIndex()]);
 }
 
-// 載入渲染設定；失敗時維持預設 false（安全優先）
+// ── 手機右滑/左滑偵測 ─────────────────────────────
+function setupSwipeGestures() {
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const swipeThreshold = 50;
+    const edgeThreshold = 40;
+
+    document.addEventListener('touchstart', e => {
+        touchStartX = e.changedTouches[0].screenX;
+    }, { passive: true });
+
+    document.addEventListener('touchend', e => {
+        touchEndX = e.changedTouches[0].screenX;
+        handleSwipe();
+    }, { passive: true });
+
+    function handleSwipe() {
+        if (window.innerWidth >= 768) return;
+        const swipeDistance = touchEndX - touchStartX;
+        if (swipeDistance > swipeThreshold && touchStartX < edgeThreshold) {
+            sidebar.classList.remove('collapsed');
+        } else if (swipeDistance < -swipeThreshold) {
+            sidebar.classList.add('collapsed');
+        }
+    }
+}
+
+// 載入渲染設定
 async function loadConfig() {
     try {
         const resp = await fetch('/api/config');
@@ -65,7 +93,7 @@ async function loadArticleIndex() {
         restoreArticleFromURL();
     } catch (error) {
         articleListElement.innerHTML =
-            '<li style="color:red;">❌ 無法載入文章。<br>請確認啟動了 <code>python server.py</code></li>';
+            '<li style="color:red;">無法載入文章。<br>請確認啟動了 <code>python server.py</code></li>';
     }
 }
 
@@ -83,21 +111,18 @@ function setupFAB() {
         }
     });
 
-    // 搜尋按鈕：打開搜尋層
     fabSearch.addEventListener('click', () => {
         searchOverlay.style.display = '';
         setTimeout(() => searchInput.focus(), 100);
         fabContainer.classList.remove('open');
     });
 
-    // 點擊畫面其他地方自動收合 FAB 選單
     window.addEventListener('click', (e) => {
         if (!fabContainer.contains(e.target)) {
             fabContainer.classList.remove('open');
         }
     });
 
-    // 點擊主要內容區時自動收起側邊欄
     document.getElementById('main-content').addEventListener('click', () => {
         if (!sidebar.classList.contains('collapsed')) {
             sidebar.classList.add('collapsed');
@@ -121,36 +146,93 @@ function setupSettings() {
     });
 }
 
+// ── 渲染文章列表 (實裝完美抽屜動畫) ─────────────────────────────
 function renderArticleList() {
     articleListElement.innerHTML = '';
     const pinned = allArticles.filter(a => !a.date);
     const dated = allArticles.filter(a => a.date);
 
+    // 渲染置頂/無日期文章
     pinned.forEach(article => {
         const li = document.createElement('li');
         li.textContent = article.title;
+        li.className = 'article-item pinned';
         li.addEventListener('click', () => onArticleClick(article));
         articleListElement.appendChild(li);
     });
 
+    // 建立日期群組 (資料夾)
     const groups = {};
     dated.forEach(article => {
         if (!groups[article.date]) groups[article.date] = [];
         groups[article.date].push(article);
     });
 
+    // 依照日期排序 (新到舊)
     const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
-    sortedDates.forEach(date => {
-        const dateHeader = document.createElement('li');
-        dateHeader.className = 'date-group-header';
-        dateHeader.textContent = date;
-        articleListElement.appendChild(dateHeader);
+
+    // 渲染收納式資料夾（向下展開 + 依層級遞縮）
+    sortedDates.forEach((date, index) => {
+        const folder = document.createElement('li');
+        folder.className = 'folder';
+
+        const isCollapsed = index !== 0; // 第一項預設展開，其他收合
+
+        // 資料夾標題列（用 button 以支援鍵盤操作）
+        const folderHeader = document.createElement('button');
+        folderHeader.type = 'button';
+        folderHeader.className = `folder-header ${isCollapsed ? 'collapsed' : ''}`;
+        folderHeader.setAttribute('aria-expanded', String(!isCollapsed));
+        folderHeader.innerHTML = '<span class="folder-icon">▼</span><span class="folder-label"></span>';
+        folderHeader.querySelector('.folder-label').textContent = date;
+
+        // 內容容器：高度動畫目標（向下展開）
+        const folderBody = document.createElement('div');
+        folderBody.className = `folder-body ${isCollapsed ? 'collapsed' : ''}`;
+
+        // 子層級列表（依層級向後遞縮）
+        const folderItems = document.createElement('ul');
+        folderItems.className = 'folder-items';
         groups[date].forEach(article => {
             const li = document.createElement('li');
             li.textContent = article.title;
+            li.className = 'article-item';
             li.addEventListener('click', () => onArticleClick(article));
-            articleListElement.appendChild(li);
+            folderItems.appendChild(li);
         });
+        folderBody.appendChild(folderItems);
+
+        // 點擊切換展開/收合（以實際內容高度做平滑動畫，所有瀏覽器皆可用）
+        folderHeader.addEventListener('click', () => {
+            const collapsing = !folderBody.classList.contains('collapsed');
+
+            if (collapsing) {
+                // 收起：先鎖定目前高度，強制 reflow 後再過渡到 0
+                folderBody.style.height = folderBody.scrollHeight + 'px';
+                void folderBody.offsetHeight;
+                folderBody.classList.add('collapsed');
+                folderBody.style.height = '0px';
+                folderHeader.classList.add('collapsed');
+                folderHeader.setAttribute('aria-expanded', 'false');
+            } else {
+                // 展開：先確保起點為 0px，移除 collapsed 後過渡到實際高度
+                folderBody.style.height = '0px';
+                void folderBody.offsetHeight;
+                folderBody.classList.remove('collapsed');
+                folderBody.style.height = folderBody.scrollHeight + 'px';
+                folderHeader.classList.remove('collapsed');
+                folderHeader.setAttribute('aria-expanded', 'true');
+                // 過渡結束後清除 inline height，還原為 auto
+                folderBody.addEventListener('transitionend', function onEnd(e) {
+                    if (e.propertyName !== 'height') return;
+                    folderBody.style.height = '';
+                }, { once: true });
+            }
+        });
+
+        folder.appendChild(folderHeader);
+        folder.appendChild(folderBody);
+        articleListElement.appendChild(folder);
     });
 }
 
@@ -234,16 +316,13 @@ function renderSearchResults(results) {
 
         const titleLine = document.createElement('div');
         titleLine.className = 'search-result-title';
-        const badge = r.match_in === 'title' ? '📄 ' : r.match_in === 'content' ? '📝 ' : '📑 ';
-        // 標題來自檔名（可能含 HTML 字元）— 一律以純文字呈現
+        const badge = r.match_in === 'title' ? '[標題] ' : r.match_in === 'content' ? '[內容] ' : '[全文] ';
         titleLine.textContent = `${r.date ? r.date + ' ' : ''}${badge}${r.title}`;
         div.appendChild(titleLine);
 
         if (r.snippet) {
             const snip = document.createElement('div');
             snip.className = 'search-result-snippet';
-            // snippet 來自文章內容（未轉義）並含 <mark> 標記：
-            // 只允許 <mark>，其餘標籤與屬性（含 onerror 等事件）由 DOMPurify 清除
             snip.innerHTML = DOMPurify.sanitize(r.snippet, {
                 ALLOWED_TAGS: ['mark'],
                 ALLOWED_ATTR: [],
@@ -263,7 +342,6 @@ function renderSearchResults(results) {
     searchResults.style.display = 'block';
 }
 
-// 暴露 closeSearch 給 renderSearchResults 使用
 function closeSearch() {
     searchOverlay.style.display = 'none';
     searchInput.value = '';
@@ -298,9 +376,9 @@ async function loadMarkdown(article) {
     history.replaceState(null, '', url);
 
     if (article.date) {
-        articleBreadcrumb.textContent = `📅 ${article.date} › 📁 ${article.title}`;
+        articleBreadcrumb.textContent = `${article.date} › ${article.title}`;
     } else {
-        articleBreadcrumb.textContent = `📁 ${article.title}`;
+        articleBreadcrumb.textContent = article.title;
     }
 
     if (btnShare) btnShare.style.display = 'flex';
@@ -313,9 +391,6 @@ async function loadMarkdown(article) {
         if (!response.ok) throw new Error('找不到檔案');
 
         const markdownText = await response.text();
-        // 依設定決定是否淨化 Markdown 渲染結果：
-        // - allow_markdown_html=false（預設）：DOMPurify 清除 <script>/onerror 等活動 HTML
-        // - allow_markdown_html=true：原樣渲染（信任文章作者，可嵌入 iframe 等）
         const rendered = marked.parse(markdownText);
         articleBody.innerHTML = allowMarkdownHtml
             ? rendered
