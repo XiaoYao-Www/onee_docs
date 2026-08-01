@@ -1,25 +1,22 @@
 # cargo-deny configuration
-# https://embarkstudios.github.io/cargo-deny/
 
 
 ############################################################
 # Advisories
-# RustSec 漏洞檢查
 ############################################################
 
 [advisories]
 
-# 低於此等級的漏洞不阻擋
-# vulnerable / unsound / yanked 等問題會失敗
-severity-threshold = "medium"
+# RustSec advisory database
+db-path = "~/.cargo/advisory-dbs"
 
+# 如果未來需要忽略特定漏洞
 ignore = []
 
 
 
 ############################################################
 # Licenses
-# 授權檢查
 ############################################################
 
 [licenses]
@@ -36,17 +33,13 @@ allow = [
 
 
 
-
-
 ############################################################
 # Bans
-# 依賴管理
 ############################################################
 
 [bans]
 
 # 同一 crate 多版本
-# 先警告，不阻擋
 multiple-versions = "warn"
 
 # 禁止 wildcard dependency
@@ -54,18 +47,14 @@ wildcards = "deny"
 
 
 
-
 ############################################################
 # Sources
-# crate 來源檢查
 ############################################################
 
 [sources]
 
-# 禁止未知 registry
 unknown-registry = "deny"
 
-# 禁止未知 git source
 unknown-git = "deny"
 
 allow-registry = [
