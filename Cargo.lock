@@ -371,28 +371,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
-name = "daily-knowledge"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "notify",
- "percent-encoding",
- "regex",
- "serde",
- "serde_json",
- "tantivy",
- "tantivy-jieba",
- "tokio",
- "toml",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "darling"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1120,6 +1098,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "onee-docs"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "notify",
+ "percent-encoding",
+ "regex",
+ "serde",
+ "serde_json",
+ "tantivy",
+ "tantivy-jieba",
+ "tokio",
+ "toml",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "oneshot"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1218,9 +1218,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro-error-attr3"
-version = "3.0.3"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be5bfc63c4dc85083c9daaf7112d0261701d4058677c3bff7f2afc44e30ef3e1"
+checksum = "b0084e6206a967a2dad822180626b2f6b07a3b379325e8f1ec0438e33a469ba7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1228,9 +1228,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro-error3"
-version = "3.0.3"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd0d42490f6b7b143eef32b9e3522e42bf25dadc02c69ed72236f80adb949b5c"
+checksum = "0cf066225f2373bc711684792b69bdeac0356019b007e721090c24d92d5d5a50"
 dependencies = [
  "proc-macro-error-attr3",
  "proc-macro2",

@@ -1,8 +1,9 @@
 [package]
-name = "daily-knowledge"
-version = "0.1.0"
+name = "onee-docs"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.88"
+license = "GPL-3.0"
 
 [profile.release]
 # Link Time Optimization
