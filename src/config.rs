@@ -89,7 +89,10 @@ impl Default for SearchConfig {
 impl ServerConfig {
     /// 設定檔路徑：`BASE_DIR/appdata/config/server_config.toml`
     pub fn config_file_path(base_dir: &Path) -> std::path::PathBuf {
-        base_dir.join("appdata").join("config").join("server_config.toml")
+        base_dir
+            .join("appdata")
+            .join("config")
+            .join("server_config.toml")
     }
 
     /// 從 `path` 載入設定。
@@ -100,9 +103,8 @@ impl ServerConfig {
             return Ok(Self::default());
         }
         let text = std::fs::read_to_string(path)?;
-        let config: ServerConfig = toml::from_str(&text).map_err(|e| {
-            anyhow::anyhow!("設定檔 {} 解析失敗: {e}", path.display())
-        })?;
+        let config: ServerConfig = toml::from_str(&text)
+            .map_err(|e| anyhow::anyhow!("設定檔 {} 解析失敗: {e}", path.display()))?;
         Ok(config)
     }
 }

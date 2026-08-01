@@ -13,7 +13,9 @@ use std::io::Read;
 use std::path::Path;
 use tantivy::collector::TopDocs;
 use tantivy::query::{BooleanQuery, Occur, Query, TermQuery};
-use tantivy::schema::{Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STRING, STORED, Value, Term};
+use tantivy::schema::{
+    Field, IndexRecordOption, Schema, Term, TextFieldIndexing, TextOptions, Value, STORED, STRING,
+};
 use tantivy::snippet::SnippetGenerator;
 use tantivy::tokenizer::TokenStream;
 use tantivy::{doc, Index, IndexReader, TantivyDocument};
@@ -78,11 +80,10 @@ impl SearchIndex {
         // jieba 分詞（Search 模式多切詞，提升查詢命中率）+ 小寫化
         // （tantivy-jieba 本身保留英文大小寫，小寫化使「Rust」與「rust」可互相匹配，
         //   與舊實作的 case-insensitive 行為一致）
-        let analyzer = tantivy::tokenizer::TextAnalyzer::builder(
-            JiebaTokenizer::with_search_mode(true),
-        )
-        .filter(tantivy::tokenizer::LowerCaser)
-        .build();
+        let analyzer =
+            tantivy::tokenizer::TextAnalyzer::builder(JiebaTokenizer::with_search_mode(true))
+                .filter(tantivy::tokenizer::LowerCaser)
+                .build();
         index.tokenizers().register("jieba", analyzer);
         let reader = index.reader()?;
 
@@ -328,7 +329,11 @@ mod tests {
         let dir = temp_article_dir("search");
         let sub = dir.join("knowledges").join("20260730");
         fs::create_dir_all(&sub).unwrap();
-        fs::write(sub.join("learning-notes.md"), "今天學習了 Rust 的所有權與借用。").unwrap();
+        fs::write(
+            sub.join("learning-notes.md"),
+            "今天學習了 Rust 的所有權與借用。",
+        )
+        .unwrap();
         fs::write(dir.join("關於本站.md"), "這是本站簡介，沒有任何關鍵字。").unwrap();
         fs::write(dir.join("notes.txt"), "Rust 不應該被搜到").unwrap();
 
@@ -358,7 +363,11 @@ mod tests {
         let r = &results[0];
         assert_eq!(r.path, "knowledges/20260730/learning-notes.md");
         assert_eq!(r.match_in, "content");
-        assert!(r.snippet.contains("<mark>Rust</mark>"), "snippet: {}", r.snippet);
+        assert!(
+            r.snippet.contains("<mark>Rust</mark>"),
+            "snippet: {}",
+            r.snippet
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }

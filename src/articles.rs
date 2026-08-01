@@ -173,7 +173,8 @@ mod tests {
 
     #[test]
     fn test_scan_articles_missing_dir() {
-        let dir = std::env::temp_dir().join(format!("daily_knowledge_no_such_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("daily_knowledge_no_such_{}", std::process::id()));
         assert!(scan_articles(&dir).is_empty());
     }
 }

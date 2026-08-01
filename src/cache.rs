@@ -54,7 +54,12 @@ impl ArticleCache {
     pub async fn refresh(&self) {
         let articles = scan_articles(&self.article_dir);
         *self.articles.write().await = articles.clone();
-        if let Some(hook) = self.refresh_hook.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        if let Some(hook) = self
+            .refresh_hook
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
             hook(articles);
         }
     }
@@ -130,18 +135,16 @@ fn is_relevant_event(event: &Event) -> bool {
     if !kind_relevant {
         return false;
     }
-    event
-        .paths
-        .iter()
-        .any(|p| p.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
+    event.paths.iter().any(|p| {
+        p.extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use notify::event::{
-        AccessKind, AccessMode, CreateKind, DataChange, ModifyKind, RemoveKind,
-    };
+    use notify::event::{AccessKind, AccessMode, CreateKind, DataChange, ModifyKind, RemoveKind};
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -193,7 +196,8 @@ mod tests {
     }
 
     #[test]
-    fn test_is_relevant_event() {        let mk = |kind: EventKind, path: &Path| Event {
+    fn test_is_relevant_event() {
+        let mk = |kind: EventKind, path: &Path| Event {
             kind,
             paths: vec![path.to_path_buf()],
             attrs: notify::event::EventAttributes::default(),

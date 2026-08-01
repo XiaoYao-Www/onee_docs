@@ -223,9 +223,13 @@ enum ReadError {
 /// TOCTOU 修復：不再「先 metadata 再讀取」，而是開啟檔案後用 `take(max+1)`
 /// 限制讀取長度，讀完再判斷是否超限 — 檔案在檢查與讀取之間被換成更大的檔案
 /// 也無法繞過上限。
-fn read_article_safe(article_dir: &PathBuf, raw_path: &str, max_file_size: u64) -> Result<String, ReadError> {
-    let canonical = std::fs::canonicalize(article_dir.join(raw_path))
-        .map_err(|_| ReadError::NotFound)?;
+fn read_article_safe(
+    article_dir: &PathBuf,
+    raw_path: &str,
+    max_file_size: u64,
+) -> Result<String, ReadError> {
+    let canonical =
+        std::fs::canonicalize(article_dir.join(raw_path)).map_err(|_| ReadError::NotFound)?;
     let article_real = std::fs::canonicalize(article_dir).map_err(|_| ReadError::NotFound)?;
     // 前綴檢查（防止符號連結逃逸）
     if !canonical.starts_with(&article_real) {
@@ -240,8 +244,7 @@ fn read_article_safe(article_dir: &PathBuf, raw_path: &str, max_file_size: u64) 
     // 限流讀取：最多讀 max_file_size + 1 位元組，超限即判 TooLarge
     let file = std::fs::File::open(&canonical).map_err(|_| ReadError::Io)?;
     let mut buf = Vec::new();
-    file
-        .take(max_file_size + 1)
+    file.take(max_file_size + 1)
         .read_to_end(&mut buf)
         .map_err(|_| ReadError::Io)?;
     if buf.len() as u64 > max_file_size {
@@ -342,7 +345,9 @@ async fn handle_search(
     }
 
     // 純記憶體索引查詢（Tantivy），不觸碰檔案系統
-    let results = state.search_index.search(q, state.config.search.max_results);
+    let results = state
+        .search_index
+        .search(q, state.config.search.max_results);
     (
         StatusCode::OK,
         [
@@ -529,7 +534,10 @@ async fn main() -> anyhow::Result<()> {
     println!("   ➜ 本機: http://localhost:{port}");
     println!("   ➜ 區域網路: http://<你的IP>:{port}");
     println!("   📁 文章目錄: {}", ARTICLE_DIR.display());
-    println!("   💾 文章快取: notify 即時監控 + {} 秒定時掃描", cache::PERIODIC_SCAN_INTERVAL.as_secs());
+    println!(
+        "   💾 文章快取: notify 即時監控 + {} 秒定時掃描",
+        cache::PERIODIC_SCAN_INTERVAL.as_secs()
+    );
     println!("   ⚡ 按 Ctrl+C 停止伺服器");
 
     // into_make_service_with_connect_info：為 rate_limit 中間件提供客戶端 IP
@@ -584,7 +592,10 @@ mod tests {
             // 路徑穿越（原始與編碼變體）
             ("/api/article?path=../server.py", StatusCode::FORBIDDEN),
             ("/api/article?path=..%2fserver.py", StatusCode::FORBIDDEN),
-            ("/api/article?path=%2e%2e%2fserver.py", StatusCode::FORBIDDEN),
+            (
+                "/api/article?path=%2e%2e%2fserver.py",
+                StatusCode::FORBIDDEN,
+            ),
             // 絕對路徑（Rust Path::join 直接替換 → 不在 article 內）
             ("/api/article?path=/etc/passwd", StatusCode::FORBIDDEN),
             // 非 .md
@@ -624,18 +635,19 @@ mod tests {
         ];
 
         for (uri, expected) in reject_cases {
-            let req = Request::builder()
-                .uri(uri)
-                .body(Body::empty())
-                .unwrap();
+            let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
             let resp = app.clone().oneshot(req).await.unwrap();
             assert_eq!(resp.status(), expected, "uri: {uri}");
         }
 
         // 靜態白名單檔案（含 vendor 本地化函式庫）
         for uri in [
-            "/", "/index.html", "/style.css", "/script.js",
-            "/vendor/marked.min.js", "/vendor/purify.min.js",
+            "/",
+            "/index.html",
+            "/style.css",
+            "/script.js",
+            "/vendor/marked.min.js",
+            "/vendor/purify.min.js",
         ] {
             let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
             let resp = app.clone().oneshot(req).await.unwrap();
@@ -655,7 +667,9 @@ mod tests {
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         assert!(String::from_utf8_lossy(&body).contains("# 今天的學習筆記"));
 
         // 中文路徑（百分號編碼）
@@ -665,14 +679,21 @@ mod tests {
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         assert!(String::from_utf8_lossy(&body).contains("知識庫"));
 
         // 文章列表
-        let req = Request::builder().uri("/api/articles").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/api/articles")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let articles = json["articles"].as_array().expect("articles 應為陣列");
         assert!(!articles.is_empty());
@@ -687,7 +708,9 @@ mod tests {
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(!json["results"].as_array().unwrap().is_empty());
 
@@ -698,15 +721,22 @@ mod tests {
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["results"].as_array().unwrap().is_empty());
 
         // /api/config 預設 allow_markdown_html = false
-        let req = Request::builder().uri("/api/config").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/api/config")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["allow_markdown_html"], serde_json::json!(false));
     }
@@ -724,10 +754,7 @@ mod tests {
         assert!(h.contains_key("x-content-type-options"));
         assert!(h.contains_key("x-frame-options"));
         assert!(h.contains_key("referrer-policy"));
-        assert_eq!(
-            h.get("x-content-type-options").unwrap(),
-            "nosniff",
-        );
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff",);
 
         // API 回應
         let resp = get(&app, "/api/articles").await;
@@ -759,7 +786,11 @@ mod tests {
         }
         // 第 4 個起 429
         let resp = get(&app, "/api/articles").await;
-        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS, "超過閾值應 429");
+        assert_eq!(
+            resp.status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "超過閾值應 429"
+        );
         let resp = get(&app, "/api/config").await;
         assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
 
@@ -782,7 +813,11 @@ mod tests {
         };
         let app = build_app(test_state_with(config).await);
 
-        let resp = get(&app, "/api/article?path=knowledges/20260730/learning-notes.md").await;
+        let resp = get(
+            &app,
+            "/api/article?path=knowledges/20260730/learning-notes.md",
+        )
+        .await;
         assert_eq!(
             resp.status(),
             StatusCode::PAYLOAD_TOO_LARGE,
