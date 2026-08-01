@@ -78,6 +78,8 @@ struct AppState {
     config: Arc<config::ServerConfig>,
     rate_limiter: Arc<RateLimiter>,
     search_index: Arc<search_index::SearchIndex>,
+    /// 文章目錄（注入而非全局，便於測試以臨時目錄建構）
+    article_dir: PathBuf,
 }
 
 impl AppState {
@@ -85,6 +87,7 @@ impl AppState {
         cache: Arc<cache::ArticleCache>,
         config: Arc<config::ServerConfig>,
         search_index: Arc<search_index::SearchIndex>,
+        article_dir: PathBuf,
     ) -> Self {
         let rate_limiter = Arc::new(RateLimiter::new(
             config.rate_limit.window_secs,
@@ -95,6 +98,7 @@ impl AppState {
             config,
             rate_limiter,
             search_index,
+            article_dir,
         }
     }
 }
@@ -286,7 +290,7 @@ async fn handle_article(
 
     // 其餘檢查（canonicalize / 讀檔）皆為同步 I/O — 移入 spawn_blocking
     let max_file_size = state.config.max_file_size as u64;
-    let article_dir = ARTICLE_DIR.clone();
+    let article_dir = state.article_dir.clone();
     let outcome = tokio::task::spawn_blocking(move || {
         read_article_safe(&article_dir, &raw_path, max_file_size)
     })
@@ -527,7 +531,12 @@ async fn main() -> anyhow::Result<()> {
     cache.spawn_watcher();
     cache.spawn_periodic_scan(cache::PERIODIC_SCAN_INTERVAL);
 
-    let app = build_app(AppState::new(cache, Arc::clone(&config), search_index));
+    let app = build_app(AppState::new(
+        cache,
+        Arc::clone(&config),
+        search_index,
+        ARTICLE_DIR.clone(),
+    ));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
 
     println!("🚀 每日知識庫伺服器已啟動");
@@ -555,25 +564,56 @@ mod tests {
 
     use axum::body::Body;
     use axum::http::Request;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
     use tower::ServiceExt;
 
-    /// 建構測試用 AppState（快取以真實 article/ 目錄做初始掃描）
-    async fn test_state() -> AppState {
-        test_state_with(config::ServerConfig::default()).await
+    /// 生成測試用臨時文章目錄（不依賴 appdata/ 下的私有文章，上傳 GitHub 後仍可測試）
+    fn temp_article_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "daily_knowledge_srv_test_{tag}_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
     }
 
-    /// 以指定設定建構測試用 AppState；搜尋索引以真實文章目錄重建
-    async fn test_state_with(config: config::ServerConfig) -> AppState {
-        let cache = Arc::new(cache::ArticleCache::new(ARTICLE_DIR.clone()));
+    /// 建立含範例文章的臨時文章目錄：
+    /// 無日期「關於本站.md」置頂 + 有日期「knowledges/20260730/learning-notes.md」。
+    fn fixture_article_dir(tag: &str) -> PathBuf {
+        let dir = temp_article_dir(tag);
+        let sub = dir.join("knowledges").join("20260730");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(
+            sub.join("learning-notes.md"),
+            "# 今天的學習筆記\n\nRust 的所有權與借用。\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("關於本站.md"),
+            "# 關於本站\n\n這是本站的知識庫簡介。\n",
+        )
+        .unwrap();
+        dir
+    }
+
+    /// 以指定文章目錄與設定建構測試用 AppState；搜尋索引以該目錄重建
+    async fn test_state_with(article_dir: PathBuf, config: config::ServerConfig) -> AppState {
+        let cache = Arc::new(cache::ArticleCache::new(article_dir.clone()));
         let search_index = Arc::new(search_index::SearchIndex::new().unwrap());
         let articles = cache.get_articles().await;
         let si = Arc::clone(&search_index);
-        let ad = ARTICLE_DIR.clone();
+        let ad = article_dir.clone();
         let mfs = config.max_file_size as u64;
         tokio::task::spawn_blocking(move || si.rebuild(&articles, &ad, mfs))
             .await
             .unwrap();
-        AppState::new(cache, Arc::new(config), search_index)
+        AppState::new(cache, Arc::new(config), search_index, article_dir)
     }
 
     /// 發送 HTTP 請求並回傳回應
@@ -585,7 +625,8 @@ mod tests {
     /// HTTP 層級整合測試：路徑安全、靜態白名單與編碼繞過防護
     #[tokio::test]
     async fn test_http_security_and_static() {
-        let app = build_app(test_state().await);
+        let dir = fixture_article_dir("sec");
+        let app = build_app(test_state_with(dir.clone(), config::ServerConfig::default()).await);
 
         // 安全拒絕用例：(uri, 期望狀態碼)
         let reject_cases = [
@@ -653,12 +694,15 @@ mod tests {
             let resp = app.clone().oneshot(req).await.unwrap();
             assert_eq!(resp.status(), StatusCode::OK, "uri: {uri}");
         }
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// HTTP 層級整合測試：正常 API 回應（依賴專案內的範例文章）
+    /// HTTP 層級整合測試：正常 API 回應（依賴測試即時生成的範例文章）
     #[tokio::test]
     async fn test_http_api_happy_path() {
-        let app = build_app(test_state().await);
+        let dir = fixture_article_dir("happy");
+        let app = build_app(test_state_with(dir.clone(), config::ServerConfig::default()).await);
 
         // 讀取真實文章（ASCII 路徑）
         let req = Request::builder()
@@ -739,12 +783,15 @@ mod tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["allow_markdown_html"], serde_json::json!(false));
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     /// 安全回應頭：所有回應（靜態與 API）都應攜帶
     #[tokio::test]
     async fn test_security_headers_present() {
-        let app = build_app(test_state().await);
+        let dir = fixture_article_dir("headers");
+        let app = build_app(test_state_with(dir.clone(), config::ServerConfig::default()).await);
 
         // 靜態頁面
         let resp = get(&app, "/").await;
@@ -764,6 +811,8 @@ mod tests {
         let resp = get(&app, "/no-such-file").await;
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         assert!(resp.headers().contains_key("content-security-policy"));
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     /// 限速：超過閾值的 /api/* 請求回 429；靜態檔案不受限；重置後恢復放行
@@ -776,7 +825,8 @@ mod tests {
             },
             ..Default::default()
         };
-        let state = test_state_with(config).await;
+        let dir = fixture_article_dir("rate");
+        let state = test_state_with(dir.clone(), config).await;
         let app = build_app(state.clone());
 
         // 前 3 個 API 請求放行
@@ -802,6 +852,8 @@ mod tests {
         state.rate_limiter.clear();
         let resp = get(&app, "/api/articles").await;
         assert_eq!(resp.status(), StatusCode::OK, "重置後應恢復放行");
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     /// 檔案大小上限：超過 max_file_size 的文章應回 413（TOCTOU 修復後仍生效）
@@ -811,7 +863,8 @@ mod tests {
             max_file_size: 16, // 16 位元組
             ..Default::default()
         };
-        let app = build_app(test_state_with(config).await);
+        let dir = fixture_article_dir("oversize");
+        let app = build_app(test_state_with(dir.clone(), config).await);
 
         let resp = get(
             &app,
@@ -823,5 +876,7 @@ mod tests {
             StatusCode::PAYLOAD_TOO_LARGE,
             "超過設定上限的文章應回 413"
         );
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 }
