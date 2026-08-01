@@ -15,9 +15,6 @@ db-path = "~/.cargo/advisory-db"
 # 遇到漏洞直接失敗
 vulnerability = "deny"
 
-# 未維護 crate 警告
-unmaintained = "warn"
-
 # yanked crate
 yanked = "deny"
 
@@ -43,10 +40,6 @@ allow = [
     "Unicode-DFS-2016",
     "Unicode-3.0"
 ]
-
-
-# 未知 license 直接拒絕
-confidence-threshold = 0.8
 
 
 
