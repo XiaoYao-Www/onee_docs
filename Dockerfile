@@ -89,8 +89,8 @@ WORKDIR /app
 
 # Rust binary
 COPY --from=builder \
-    /build/target/release/daily-knowledge \
-    ./daily-knowledge
+    /build/target/release/onee-docs \
+    ./onee-docs
 
 
 # 前端資源
@@ -123,4 +123,4 @@ EXPOSE 8765
 USER appuser
 
 
-CMD ["./daily-knowledge"]
+CMD ["./onee-docs"]
