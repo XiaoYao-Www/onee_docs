@@ -1,11 +1,45 @@
-.git/
-.github/
+# Git
+.git
 .gitignore
-.vscode/
-.reasonix/
-scripts/
-appdata/article/
-target/
-__pycache__/
-*.pyc
-*.pyo
+.github
+
+
+# Rust build output
+target
+
+
+# Docker
+Dockerfile
+.dockerignore
+
+
+# IDE
+.vscode
+.idea
+
+
+# OS files
+.DS_Store
+Thumbs.db
+
+
+# Runtime data
+appdata/article
+appdata/*.db
+appdata/*.sqlite
+appdata/*.sqlite3
+
+
+# Logs
+*.log
+
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+
+# Documentation
+README*
+LICENSE*

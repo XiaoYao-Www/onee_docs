@@ -2,21 +2,47 @@
 name = "daily-knowledge"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.88"
+
+[profile.release]
+# Link Time Optimization
+# 提升跨 crate 最佳化能力
+lto = "thin"
+
+# 減少 codegen unit，提高最佳化品質
+codegen-units = 1
+
+# 移除 debug symbol，縮小 binary
+strip = true
+
+# Server 不需要 unwind stack
+panic = "abort"
 
 [dependencies]
 axum = "0.7"
-tokio = { version = "1", features = ["full"] }
+
+tokio = { version = "1",features = [ "macros", "rt-multi-thread", "signal", "fs", "sync" ]}
+
 tower-http = { version = "0.5", features = ["fs"] }
+
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
 clap = { version = "4", features = ["derive"] }
+
 regex = "1"
+
 percent-encoding = "2"
+
 notify = "6"
+
 tracing = "0.1"
 tracing-subscriber = "0.3"
+
 anyhow = "1"
+
 toml = "0.9"
+
 tantivy = "0.26"
 tantivy-jieba = "0.20"
 

@@ -1,0 +1,82 @@
+# cargo-deny configuration
+# https://embarkstudios.github.io/cargo-deny/
+
+
+############################################################
+# Advisories
+# 檢查 Rust crate 安全漏洞
+############################################################
+
+[advisories]
+
+# RustSec database
+db-path = "~/.cargo/advisory-db"
+
+# 遇到漏洞直接失敗
+vulnerability = "deny"
+
+# 未維護 crate 警告
+unmaintained = "warn"
+
+# yanked crate
+yanked = "deny"
+
+# 忽略列表
+ignore = []
+
+
+
+############################################################
+# Licenses
+# 檢查依賴授權
+############################################################
+
+[licenses]
+
+# 允許的 license
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0"
+]
+
+
+# 未知 license 直接拒絕
+confidence-threshold = 0.8
+
+
+
+############################################################
+# Bans
+# 檢查重複與禁止依賴
+############################################################
+
+[bans]
+
+# 多版本 crate
+# 先警告，不阻擋
+multiple-versions = "warn"
+
+
+# 不允許 wildcard dependency
+wildcards = "deny"
+
+
+############################################################
+# Sources
+# 檢查 crate 來源
+############################################################
+
+[sources]
+
+# 只接受 crates.io
+unknown-registry = "deny"
+unknown-git = "deny"
+
+allow-registry = [
+    "https://github.com/rust-lang/crates.io-index"
+]

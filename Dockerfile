@@ -1,54 +1,126 @@
-# ── 階段一：編譯 ──────────────────────────────────────────
-# 建置階段使用 root 進行編譯；rust:1.88 為明確版本標籤。
-# 版本依據：Cargo.lock 鎖定的 tantivy 0.26.1 其 MSRV 為 1.86，
-# jieba-rs 0.10.3（傳遞依賴）為 edition 2024（需 1.85+），故選 1.88 並留緩衝。
-# 若需最高可重現性，可用 `docker manifest inspect rust:1.88-slim-bookworm`
-# 取得 digest 後 pin（如 `rust@sha256:…`）。
-FROM rust:1.88-slim-bookworm AS build
+# syntax=docker/dockerfile:1.7
+
+
+############################################################
+# Stage 1: Planner
+# 產生 dependency recipe，讓 Rust crate 可以被快取
+############################################################
+
+FROM lukemathwalker/cargo-chef:latest-rust-1.88 AS chef
 
 WORKDIR /build
 
-# 先複製清單與原始碼以善用層快取
+
+FROM chef AS planner
+
 COPY Cargo.toml Cargo.lock ./
-COPY src/ ./src/
 
-# 編譯 release binary
-RUN cargo build --release
+COPY src ./src
 
-# ── 階段二：執行 ──────────────────────────────────────────
-# bookworm-slim 為發行版標籤（持續接收安全更新）；亦可 pin 到具體日期標籤
-# （如 debian:bookworm-YYYYMMDD-slim）以完全鎖定建置內容。
-FROM debian:bookworm-slim
+RUN cargo chef prepare \
+    --recipe-path recipe.json
 
-# 建立非 root 使用者（安全最佳實踐）
-RUN groupadd --system --gid 1001 appgroup \
-    && useradd --system --uid 1001 --gid 1001 appuser
 
-# HEALTHCHECK 所需：curl（最小化安裝）
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+
+############################################################
+# Stage 2: Builder
+# 編譯 Rust binary
+############################################################
+
+FROM chef AS builder
+
+WORKDIR /build
+
+
+COPY --from=planner /build/recipe.json recipe.json
+
+
+# 編譯 dependencies
+# 只要 Cargo.toml / Cargo.lock 沒變
+# 這層可以直接使用 cache
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo chef cook \
+    --release \
+    --recipe-path recipe.json
+
+
+
+# 複製完整專案
+COPY . .
+
+
+# 編譯正式版本
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build \
+    --release \
+    --locked
+
+
+
+############################################################
+# Stage 3: Runtime
+# 最小執行環境
+############################################################
+
+FROM debian:bookworm-slim AS runtime
+
+
+LABEL org.opencontainers.image.title="daily-knowledge"
+
+
+# 建立非 root 使用者
+RUN groupadd \
+        --system \
+        --gid 1001 \
+        appgroup \
+    && useradd \
+        --system \
+        --uid 1001 \
+        --gid 1001 \
+        appuser
+
 
 WORKDIR /app
 
-# 複製 binary 與前端檔案（不含 appdata/article/ 內容，由使用者 -v 掛載）
-COPY --from=build /build/target/release/daily-knowledge ./
-COPY index.html style.css script.js ./
-COPY vendor/ ./vendor/
-# 設定模板隨鏡像提供（使用者可 -v 掛載覆寫）
-COPY appdata/config/server_config.toml ./appdata/config/server_config.toml
 
-# 建立空的文章目錄供使用者掛載
-RUN mkdir -p /app/appdata/article && chown -R appuser:appgroup /app/appdata
+# Rust binary
+COPY --from=builder \
+    /build/target/release/daily-knowledge \
+    ./daily-knowledge
 
-# 預設埠號（可透過 -e PORT=xxxx 覆蓋）
+
+# 前端資源
+COPY index.html ./
+COPY style.css ./
+COPY script.js ./
+
+COPY vendor ./vendor
+
+
+# 預設設定
+COPY appdata/config/server_config.toml \
+     ./appdata/config/server_config.toml
+
+
+RUN mkdir -p \
+        /app/appdata/article \
+    && chown -R \
+        appuser:appgroup \
+        /app
+
+
+
 ENV PORT=8765
+
+
 EXPOSE 8765
 
-# 健康檢查：確認 API 可回應
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:${PORT:-8765}/api/config" || exit 1
 
 USER appuser
+
 
 CMD ["./daily-knowledge"]
