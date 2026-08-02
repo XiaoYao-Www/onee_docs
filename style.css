@@ -636,3 +636,123 @@ body.dark-theme .search-result-snippet mark {
         right: 16px;
     }
 }
+
+/* ================= onee_docs 推薦文章區塊（僅 index.md） ================= */
+.onee-docs-block {
+    margin: 1.4em 0;
+    padding: 0.9em 1.1em;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    box-shadow: var(--card-shadow);
+}
+.onee-docs-title {
+    font-weight: 700;
+    font-size: 1.05em;
+    color: var(--tree-folder-text);
+    margin-bottom: 0.7em;
+    padding-bottom: 0.45em;
+    border-bottom: 1px solid var(--card-border);
+}
+.onee-docs-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.onee-docs-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.onee-docs-item:hover {
+    background: var(--tree-hover-bg);
+}
+.onee-docs-item:focus-visible {
+    outline: 2px solid var(--link-color);
+    outline-offset: 2px;
+}
+.onee-docs-date {
+    font-size: 0.82em;
+    color: var(--subtext-color);
+    white-space: nowrap;
+}
+.onee-docs-item-title {
+    color: var(--link-color);
+    word-break: break-word;
+}
+
+/* layout = list：垂直列表（預設樣式即此） */
+
+/* layout = slide：橫向滑動列表 */
+.onee-docs-slide .onee-docs-items {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 12px;
+    padding-bottom: 6px;
+    scroll-snap-type: x mandatory;
+}
+.onee-docs-slide .onee-docs-item {
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 220px;
+    padding: 12px 14px;
+    background: var(--bg-color);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    scroll-snap-align: start;
+}
+.onee-docs-slide .onee-docs-item:hover {
+    border-color: var(--link-color);
+    background: var(--bg-color);
+}
+
+/* layout = grid：區塊網格 */
+.onee-docs-grid .onee-docs-items {
+    display: flex;
+    gap: 10px 12px;
+}
+.onee-docs-grid .onee-docs-item {
+    flex: 0 1 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 200px;
+    padding: 10px 12px;
+    background: var(--bg-color);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+}
+.onee-docs-grid .onee-docs-item:hover {
+    border-color: var(--link-color);
+    background: var(--bg-color);
+}
+/* 垂直排列：卡片縱向優先（先往下填滿，超出最大高度後換列） */
+.onee-docs-grid.onee-docs-vertical .onee-docs-items {
+    flex-direction: column;
+    flex-wrap: wrap;
+    max-height: min(520px, 70vh);
+    align-content: flex-start;
+}
+/* 水平排列：卡片橫向優先（先往右填滿，超出寬度後換行） */
+.onee-docs-grid.onee-docs-horizontal .onee-docs-items {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+/* 響應式：小螢幕縮小卡片與垂直列高上限 */
+@media (max-width: 768px) {
+    .onee-docs-grid.onee-docs-vertical .onee-docs-items {
+        max-height: 420px;
+    }
+}
+@media (max-width: 480px) {
+    .onee-docs-grid .onee-docs-item {
+        width: 160px;
+    }
+    .onee-docs-slide .onee-docs-item {
+        width: 180px;
+    }
+}

@@ -42,6 +42,24 @@ daily_knowledge/
 - 訪問網站未帶 `?article=` 參數（或指定 `?article=index.md`）時顯示此篇；點擊側邊欄頂部站點標題也可回到此篇
 - 根文章**不會**出現在側邊欄文章列表，也**不參與**全文搜尋；子目錄下的 `index.md` 不受影響，仍是一般文章
 
+**onee_docs 推薦文章區塊（僅根文章可用）**：
+
+根文章內可用 `onee_docs` fenced code block 建立推薦文章列表，其他文章中的此語法僅顯示為普通程式碼區塊。根文章可含多個區塊，每個區塊為：
+
+````markdown
+```onee_docs
+sort = newest        # 排序：newest 最新 | oldest 最舊 | random 隨機（預設 newest）
+layout = list        # 佈局：list 垂直列表 | slide 橫向滑動 | grid 區塊（預設 list）
+direction = vertical # 僅 layout=grid：vertical 縱向排列 | horizontal 橫向排列（預設 vertical）
+count = 10           # 顯示數量（預設 10；0 或省略 = 全部）
+title = 推薦閱讀      # 區塊標題（可選）
+```
+````
+
+- 內部每行一個 `key = value`，`#` 後為注釋，值可用引號包裹
+- `sort=random` 於每次載入頁面時重新洗牌；`newest`/`oldest` 依文章日期排序，無日期文章排在最後
+- 點擊區塊內文章即可開啟閱讀，與側邊欄行為一致
+
 ## 🚀 快速開始
 
 ### 本地執行（需要 Rust toolchain）

@@ -1,4 +1,4 @@
-//! daily-knowledge — 每日知識庫輕量後端伺服器（Rust 版）
+//! onee-docs — ONEE-DOCS 輕量後端伺服器（Rust 版）
 //!
 //! 功能（與原 Python 版 `server.py` 行為一致）：
 //!   - 提供靜態檔案服務 (index.html, style.css, script.js 等)
@@ -37,7 +37,7 @@ use std::time::{Duration, Instant};
 use tower_http::services::ServeDir;
 
 #[derive(Parser, Debug)]
-#[command(name = "daily-knowledge", about = "每日知識庫輕量後端伺服器")]
+#[command(name = "onee-docs", about = "ONEE-DOCS 輕量後端伺服器")]
 struct Args {
     /// 指定埠號（預設 8765；無效值時退回環境變數 / 預設值）
     #[arg(long)]
@@ -180,7 +180,10 @@ async fn handle_articles(State(state): State<AppState>) -> Response {
     // 根文章是否存在（獨立檢查，因掃描結果不含根文章）
     let home = articles::home_article(&state.article_dir);
     // 與 Python `json.dumps(..., ensure_ascii=False, indent=2)` 一致
-    let body = match serde_json::to_string_pretty(&ArticlesResponse { articles: tree, home }) {
+    let body = match serde_json::to_string_pretty(&ArticlesResponse {
+        articles: tree,
+        home,
+    }) {
         Ok(body) => body,
         Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "內部錯誤"),
     };
@@ -423,6 +426,11 @@ async fn static_guard(req: Request, next: Next) -> Response {
 /// 統一安全回應頭（對所有回應生效，含 static_guard 產生的錯誤回應）。
 /// 注意：`style-src 'unsafe-inline'` 為必要放寬 — 前端大量使用 style 屬性與
 /// element.style.* 設定樣式；script 僅允許同源（vendor 已本地化）。
+///
+/// 另統一加入 `Cache-Control: no-cache`：靜態前端檔案（script.js / style.css）
+/// 會隨版本演進，瀏覽器若對其做啟發式緩存，可能持續載入舊版檔案導致
+/// 樣式/功能不更新（例如 onee_docs 區塊佈局不生效）。no-cache 使瀏覽器
+/// 每次使用前重新驗證（配合 ServeDir 的 ETag/Last-Modified 回 304，開銷極低）。
 async fn security_headers(req: Request, next: Next) -> Response {
     let mut resp = next.run(req).await;
     let headers = resp.headers_mut();
@@ -439,6 +447,7 @@ async fn security_headers(req: Request, next: Next) -> Response {
     );
     headers.insert("X-Frame-Options", HeaderValue::from_static("SAMEORIGIN"));
     headers.insert("Referrer-Policy", HeaderValue::from_static("no-referrer"));
+    headers.insert("Cache-Control", HeaderValue::from_static("no-cache"));
     resp
 }
 
@@ -549,7 +558,7 @@ async fn main() -> anyhow::Result<()> {
     ));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
 
-    println!("🚀 每日知識庫伺服器已啟動");
+    println!("🚀 ONEE-DOCS 伺服器已啟動");
     println!("   ➜ 本機: http://localhost:{port}");
     println!("   ➜ 區域網路: http://<你的IP>:{port}");
     println!("   📁 文章目錄: {}", ARTICLE_DIR.display());
@@ -752,9 +761,7 @@ mod tests {
         let tree = &json["articles"];
         // 樹狀結構：根為 folder，含無日期檔案與日期目錄
         assert_eq!(tree["type"], "folder", "根節點應為 folder");
-        let children = tree["children"]
-            .as_object()
-            .expect("根 children 應為物件");
+        let children = tree["children"].as_object().expect("根 children 應為物件");
         assert!(children.contains_key("關於本站.md"), "應含無日期檔案節點");
         assert!(children.contains_key("knowledges"), "應含日期目錄節點");
         let file_node = &children["關於本站.md"];
@@ -764,10 +771,7 @@ mod tests {
             "無日期文章 date 應為 null"
         );
         // fixture 無根文章 index.md → home 應為 null
-        assert!(
-            json["home"].is_null(),
-            "無 index.md 時 home 應為 null"
-        );
+        assert!(json["home"].is_null(), "無 index.md 時 home 應為 null");
 
         // 搜尋（檔名匹配）
         let req = Request::builder()
@@ -808,8 +812,8 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["allow_markdown_html"], serde_json::json!(false));
         // 標題預設值（與 config 模組預設一致）
-        assert_eq!(json["site_title"], serde_json::json!("每日知識庫"));
-        assert_eq!(json["page_title"], serde_json::json!("每日知識庫"));
+        assert_eq!(json["site_title"], serde_json::json!("ONEE DOCS"));
+        assert_eq!(json["page_title"], serde_json::json!("ONEE DOCS"));
 
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -880,10 +884,17 @@ mod tests {
         assert!(h.contains_key("x-frame-options"));
         assert!(h.contains_key("referrer-policy"));
         assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff",);
+        // 靜態檔案必須帶 no-cache，避免瀏覽器啟發式緩存舊版前端檔案
+        assert_eq!(h.get("cache-control").unwrap(), "no-cache");
 
         // API 回應
         let resp = get(&app, "/api/articles").await;
         assert!(resp.headers().contains_key("content-security-policy"));
+        assert_eq!(
+            resp.headers().get("cache-control").unwrap(),
+            "no-cache",
+            "API 回應也應帶 no-cache"
+        );
 
         // 錯誤回應（static_guard 產生的 404）也應帶安全頭
         let resp = get(&app, "/no-such-file").await;

@@ -23,9 +23,9 @@ pub const DEFAULT_SEARCH_MAX_RESULTS: usize = 20;
 /// 預設定時掃描間隔（秒）：兜底 notify 漏報
 pub const DEFAULT_PERIODIC_SCAN_INTERVAL_SECS: u64 = 3600;
 /// 預設導覽列（側邊欄）標題
-pub const DEFAULT_SITE_TITLE: &str = "每日知識庫";
+pub const DEFAULT_SITE_TITLE: &str = "ONEE DOCS";
 /// 預設瀏覽器分頁標題
-pub const DEFAULT_PAGE_TITLE: &str = "每日知識庫";
+pub const DEFAULT_PAGE_TITLE: &str = "ONEE DOCS";
 
 // ── 設定結構 ────────────────────────────────────────────
 
@@ -157,7 +157,10 @@ mod tests {
         assert_eq!(c.search.max_results, 20);
         assert_eq!(c.site_title, DEFAULT_SITE_TITLE);
         assert_eq!(c.page_title, DEFAULT_PAGE_TITLE);
-        assert_eq!(c.periodic_scan_interval_secs, DEFAULT_PERIODIC_SCAN_INTERVAL_SECS);
+        assert_eq!(
+            c.periodic_scan_interval_secs,
+            DEFAULT_PERIODIC_SCAN_INTERVAL_SECS
+        );
     }
 
     #[test]
@@ -188,7 +191,10 @@ mod tests {
         assert_eq!(c.search.max_results, 20);
         assert_eq!(c.site_title, DEFAULT_SITE_TITLE); // 未指定 → 回退預設
         assert_eq!(c.page_title, DEFAULT_PAGE_TITLE);
-        assert_eq!(c.periodic_scan_interval_secs, DEFAULT_PERIODIC_SCAN_INTERVAL_SECS);
+        assert_eq!(
+            c.periodic_scan_interval_secs,
+            DEFAULT_PERIODIC_SCAN_INTERVAL_SECS
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

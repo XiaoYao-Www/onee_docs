@@ -185,6 +185,18 @@ function findArticle(node, path) {
     return null;
 }
 
+// 將文章樹展平為扁平文章列表（title/path/date），供 onee_docs 區塊排序使用
+function flattenArticles(node, out = []) {
+    for (const item of Object.values(node)) {
+        if (item.type === 'file') {
+            out.push(item.article);
+        } else if (item.type === 'folder') {
+            flattenArticles(item.children, out);
+        }
+    }
+    return out;
+}
+
 function renderTree(parent, node, depth = 0) {
 
     Object.entries(node).forEach(([name, item]) => {
@@ -535,6 +547,150 @@ function onArticleClick(article) {
     }
 }
 
+// ── onee_docs 特殊區塊（僅根文章 index.md 生效） ─────────────
+// 語法：以 ```onee_docs 開頭、``` 結尾的 fenced code block，
+// 內部每行一個 key = value 參數（# 後為注釋，值可加引號）：
+//   sort = newest        # newest | oldest | random（預設 newest）
+//   layout = list        # list | slide | grid（預設 list）
+//   direction = vertical # 僅 layout=grid：vertical 縱向排列 | horizontal 橫向排列
+//   count = 10           # 顯示數量（預設 10；0 或省略 = 全部）
+//   title = 推薦閱讀      # 區塊標題（可選）
+const ONEE_DOCS_BLOCK_RE = /```onee_docs\s*\n([\s\S]*?)```/g;
+
+// 去掉行尾注釋：# 不在引號內時視為注釋起點
+function stripInlineComment(line) {
+    let inQuote = null;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuote) {
+            if (ch === inQuote) inQuote = null;
+        } else if (ch === '"' || ch === "'") {
+            inQuote = ch;
+        } else if (ch === '#') {
+            return line.slice(0, i);
+        }
+    }
+    return line;
+}
+
+// 解析 onee_docs 區塊內文為參數物件；無效行忽略
+function parseOneeDocsParams(blockText) {
+    const params = {};
+    for (let line of blockText.split('\n')) {
+        line = stripInlineComment(line).trim();
+        if (!line) continue;
+        const eq = line.indexOf('=');
+        if (eq === -1) continue;
+        const key = line.slice(0, eq).trim();
+        let value = line.slice(eq + 1).trim();
+        // 去除成對引號
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1).trim();
+        }
+        if (key) params[key] = value;
+    }
+    return params;
+}
+
+// 提取 markdown 中所有 onee_docs 區塊，替換為佔位符（前後加空行確保獨立 block），
+// 回傳 { markdown, blocks }；blocks[i].params 對應佔位符 data-onee-docs="i"
+function extractOneeDocsBlocks(markdown) {
+    const blocks = [];
+    let index = 0;
+    const replaced = markdown.replace(ONEE_DOCS_BLOCK_RE, (match, inner) => {
+        blocks.push({ params: parseOneeDocsParams(inner) });
+        return `\n\n<div data-onee-docs="${index++}"></div>\n\n`;
+    });
+    return { markdown: replaced, blocks };
+}
+
+// 依 sort 排序：newest 日期降冪、oldest 升冪、random 洗牌；
+// 無日期文章一律排末尾（隨機時一併參與洗牌）
+function sortArticlesForBlock(articles, sort) {
+    if (sort === 'random') {
+        const result = articles.slice();
+        for (let i = result.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [result[i], result[j]] = [result[j], result[i]];
+        }
+        return result;
+    }
+    const withDate = [];
+    const withoutDate = [];
+    for (const a of articles) {
+        (a.date ? withDate : withoutDate).push(a);
+    }
+    withDate.sort((a, b) =>
+        sort === 'newest'
+            ? b.date.localeCompare(a.date)
+            : a.date.localeCompare(b.date)
+    );
+    return [...withDate, ...withoutDate];
+}
+
+// 渲染一個 onee_docs 區塊組件到 container（佔位符 div）內。
+// 全部以 createElement + textContent 構建，不經 innerHTML，無 XSS 面。
+function renderOneeDocsBlock(block, container) {
+    const params = block.params;
+    const sort = ['newest', 'oldest', 'random'].includes(params.sort) ? params.sort : 'newest';
+    const layout = ['list', 'slide', 'grid'].includes(params.layout) ? params.layout : 'list';
+    const direction = params.direction === 'horizontal' ? 'horizontal' : 'vertical';
+    let count = parseInt(params.count, 10);
+    if (!Number.isInteger(count) || count <= 0) count = Infinity;
+
+    const items = sortArticlesForBlock(flattenArticles(allArticles.children), sort);
+    const shown = count === Infinity ? items : items.slice(0, count);
+    if (shown.length === 0) return;
+
+    const blockEl = document.createElement('div');
+    const gridDir = layout === 'grid' ? ` onee-docs-${direction}` : '';
+    blockEl.className = `onee-docs-block onee-docs-${layout}${gridDir}`;
+
+    if (params.title) {
+        // 用 div 而非 heading，避免進入文章大綱（TOC）
+        const titleEl = document.createElement('div');
+        titleEl.className = 'onee-docs-title';
+        titleEl.textContent = params.title;
+        blockEl.appendChild(titleEl);
+    }
+
+    const listEl = document.createElement('div');
+    listEl.className = 'onee-docs-items';
+    blockEl.appendChild(listEl);
+
+    shown.forEach(article => {
+        const item = document.createElement('div');
+        item.className = 'onee-docs-item';
+        item.setAttribute('role', 'button');
+        item.tabIndex = 0;
+
+        if (article.date) {
+            const dateEl = document.createElement('span');
+            dateEl.className = 'onee-docs-date';
+            dateEl.textContent = article.date;
+            item.appendChild(dateEl);
+        }
+
+        const titleEl = document.createElement('span');
+        titleEl.className = 'onee-docs-item-title';
+        titleEl.textContent = article.title;
+        item.appendChild(titleEl);
+
+        item.addEventListener('click', () => loadMarkdown(article));
+        item.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                loadMarkdown(article);
+            }
+        });
+
+        listEl.appendChild(item);
+    });
+
+    container.appendChild(blockEl);
+}
+
 // ── 渲染 Markdown ─────────────────────────────
 async function loadMarkdown(article) {
     const url = new URL(location);
@@ -562,10 +718,29 @@ async function loadMarkdown(article) {
         if (!response.ok) throw new Error('找不到檔案');
 
         const markdownText = await response.text();
-        const rendered = marked.parse(markdownText);
+
+        // 僅根文章解析 onee_docs 特殊區塊；其他文章原樣渲染（區塊顯示為普通代碼塊）
+        let renderText = markdownText;
+        let oneeBlocks = [];
+        if (homeArticle && article.path === homeArticle.path) {
+            const extracted = extractOneeDocsBlocks(markdownText);
+            renderText = extracted.markdown;
+            oneeBlocks = extracted.blocks;
+        }
+
+        const rendered = marked.parse(renderText);
         articleBody.innerHTML = allowMarkdownHtml
             ? rendered
             : DOMPurify.sanitize(rendered);
+
+        // 將 onee_docs 區塊組件依序注入佔位符（佔位符若被淨化移除則跳過）
+        if (oneeBlocks.length > 0) {
+            articleBody.querySelectorAll('[data-onee-docs]').forEach(ph => {
+                const idx = parseInt(ph.getAttribute('data-onee-docs'), 10);
+                const block = oneeBlocks[idx];
+                if (block) renderOneeDocsBlock(block, ph);
+            });
+        }
 
         generateTOC();
         document.getElementById('main-content').scrollTo({ top: 0, behavior: 'smooth' });

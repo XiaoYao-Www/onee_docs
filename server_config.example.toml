@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────
-# 每日知識庫 — 伺服器設定範例（example template）
+# ONEE DOCS — 伺服器設定範例（example template）
 #
 # 安裝方式：
 #   1. 建立資料目錄（appdata/ 不會隨倉庫或 Docker 鏡像附帶）：
@@ -27,10 +27,10 @@ max_file_size = 5242880
 periodic_scan_interval_secs = 3600
 
 # ── 網站外觀（注意：頂層欄位須放在所有 [表] 定義之前，否則會被歸入該表） ──
-# 導覽列（側邊欄）標題，預設「每日知識庫」
-site_title = "每日知識庫"
-# 瀏覽器分頁標題，預設「每日知識庫」
-page_title = "每日知識庫"
+# 導覽列（側邊欄）標題，預設「ONEE DOCS」
+site_title = "ONEE DOCS"
+# 瀏覽器分頁標題，預設「ONEE DOCS」
+page_title = "ONEE DOCS"
 
 # ── API 限速（每 IP 滑動窗口，防止濫用耗盡伺服器資源） ──
 [rate_limit]

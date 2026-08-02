@@ -157,9 +157,12 @@ pub fn build_tree(articles: &[Article]) -> TreeNode {
         for (i, part) in parts.iter().enumerate() {
             // 最後一段為檔案；其餘為目錄
             if i == parts.len() - 1 {
-                node.insert(part.to_string(), TreeNode::File {
-                    article: article.clone(),
-                });
+                node.insert(
+                    part.to_string(),
+                    TreeNode::File {
+                        article: article.clone(),
+                    },
+                );
                 break;
             }
             let target = node
