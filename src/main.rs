@@ -168,6 +168,8 @@ fn json_error(status: StatusCode, message: &'static str) -> Response {
 #[derive(Serialize)]
 struct ArticlesResponse {
     articles: articles::TreeNode,
+    /// 根文章（首頁）相對路徑；不存在時為 null
+    home: Option<String>,
 }
 
 async fn handle_articles(State(state): State<AppState>) -> Response {
@@ -175,8 +177,10 @@ async fn handle_articles(State(state): State<AppState>) -> Response {
     let articles = state.cache.get_articles().await;
     // 轉為樹狀結構回傳，前端直接使用（不再自行 buildTree）
     let tree = articles::build_tree(&articles);
+    // 根文章是否存在（獨立檢查，因掃描結果不含根文章）
+    let home = articles::home_article(&state.article_dir);
     // 與 Python `json.dumps(..., ensure_ascii=False, indent=2)` 一致
-    let body = match serde_json::to_string_pretty(&ArticlesResponse { articles: tree }) {
+    let body = match serde_json::to_string_pretty(&ArticlesResponse { articles: tree, home }) {
         Ok(body) => body,
         Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "內部錯誤"),
     };
@@ -759,6 +763,11 @@ mod tests {
             file_node["article"]["date"].is_null(),
             "無日期文章 date 應為 null"
         );
+        // fixture 無根文章 index.md → home 應為 null
+        assert!(
+            json["home"].is_null(),
+            "無 index.md 時 home 應為 null"
+        );
 
         // 搜尋（檔名匹配）
         let req = Request::builder()
@@ -801,6 +810,57 @@ mod tests {
         // 標題預設值（與 config 模組預設一致）
         assert_eq!(json["site_title"], serde_json::json!("每日知識庫"));
         assert_eq!(json["page_title"], serde_json::json!("每日知識庫"));
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 根文章（index.md）行為：/api/articles 回傳 home 路徑、列表不含根文章、
+    /// 根文章本身仍可經 /api/article?path=index.md 讀取
+    #[tokio::test]
+    async fn test_home_article_api() {
+        let dir = fixture_article_dir("home");
+        fs::write(dir.join("index.md"), "# 首頁\n\n歡迎來到本站。\n").unwrap();
+        let app = build_app(test_state_with(dir.clone(), config::ServerConfig::default()).await);
+
+        // 列表：home 欄位正確，且樹中不含 index.md
+        let resp = get(&app, "/api/articles").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["home"], serde_json::json!("index.md"));
+        let children = json["articles"]["children"]
+            .as_object()
+            .expect("根 children 應為物件");
+        assert!(
+            !children.contains_key("index.md"),
+            "列表不應包含根文章 index.md"
+        );
+
+        // 根文章內容可正常讀取
+        let resp = get(&app, "/api/article?path=index.md").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("# 首頁"));
+
+        // 搜尋不應包含根文章
+        let resp = get(&app, "/api/search?q=%E9%A6%96%E9%A0%81").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            json["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["path"] != serde_json::json!("index.md")),
+            "搜尋結果不應包含根文章 index.md"
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }

@@ -28,6 +28,8 @@ const ICON_CHECK = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="1
 
 let currentFontSize = 16;
 let allArticles = {};
+// 根文章（首頁）：由 /api/articles 的 home 欄位提供；不存在時為 null
+let homeArticle = null;
 // 由 /api/config 提供；預設 false（安全）：文章中的 HTML 會被 DOMPurify 清除
 let allowMarkdownHtml = false;
 
@@ -39,10 +41,21 @@ async function init() {
     setupShareButton();
     setupSearch();
     setupSwipeGestures();
+    setupSiteTitleHome();
     if (window.innerWidth < 768) {
         sidebar.classList.add('collapsed');
     }
     await Promise.all([loadConfig(), loadArticleIndex()]);
+}
+
+// 點擊頂部站點標題 → 回到根文章（首頁）；無根文章時不作用
+function setupSiteTitleHome() {
+    const siteTitle = document.getElementById('site-title');
+    if (!siteTitle) return;
+    siteTitle.addEventListener('click', () => {
+        if (!homeArticle) return;
+        loadMarkdown(homeArticle);
+    });
 }
 
 // ── 手機右滑/左滑偵測 ─────────────────────────────
@@ -98,6 +111,10 @@ async function loadArticleIndex() {
         if (!response.ok) throw new Error('無法載入文章索引');
         const data = await response.json();
         allArticles = data.articles || {};
+        // 根文章（首頁）：存在時建立文章物件（標題顯示「首頁」）
+        homeArticle = data.home
+            ? { title: '首頁', path: data.home, date: null }
+            : null;
         renderArticleList();
         restoreArticleFromURL();
     } catch (error) {
@@ -494,8 +511,17 @@ function restoreArticleFromURL() {
     try {
         const params = new URLSearchParams(location.search);
         const path = params.get('article');
-        if (!path) return;
+        // 未指定文章 → 顯示根文章（若有）
+        if (!path) {
+            if (homeArticle) loadMarkdown(homeArticle);
+            return;
+        }
         const decoded = decodeURIComponent(path);
+        // 根文章不在列表樹中，需單獨比對
+        if (homeArticle && decoded === homeArticle.path) {
+            loadMarkdown(homeArticle);
+            return;
+        }
         const article = findArticle(allArticles.children, decoded);
         if (article) loadMarkdown(article);
     } catch { }
@@ -512,7 +538,12 @@ function onArticleClick(article) {
 // ── 渲染 Markdown ─────────────────────────────
 async function loadMarkdown(article) {
     const url = new URL(location);
-    url.searchParams.set('article', article.path);
+    if (homeArticle && article.path === homeArticle.path) {
+        // 根文章（首頁）：清除 article 參數，保持乾淨的根路徑
+        url.searchParams.delete('article');
+    } else {
+        url.searchParams.set('article', article.path);
+    }
     history.replaceState(null, '', url);
 
     if (article.date) {

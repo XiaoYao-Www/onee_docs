@@ -5,6 +5,10 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// 根文章（首頁）檔名：置於文章目錄根層的固定檔名，
+/// 作為未指定文章時的預設首頁，但不出現在文章列表與搜尋結果。
+pub const HOME_ARTICLE: &str = "index.md";
+
 /// 單篇文章資訊
 #[derive(Debug, Clone, Serialize)]
 pub struct Article {
@@ -97,6 +101,11 @@ pub(crate) fn scan_articles(article_dir: &Path) -> Vec<Article> {
         let rel_path = full_path.strip_prefix(article_dir).unwrap_or(&full_path);
         let rel_path_str = rel_path.to_string_lossy().replace('\\', "/");
 
+        // 根文章（article/index.md）不出現在列表與搜尋結果，僅作為預設首頁
+        if rel_path_str == HOME_ARTICLE {
+            continue;
+        }
+
         let parent_name = full_path
             .parent()
             .and_then(|p| p.file_name())
@@ -124,6 +133,17 @@ pub(crate) fn scan_articles(article_dir: &Path) -> Vec<Article> {
     with_date.sort_by(|a, b| b.date.cmp(&a.date));
     no_date.extend(with_date);
     no_date
+}
+
+/// 回傳根文章（首頁）的相對路徑：文章目錄根層存在 `index.md` 時回傳
+/// `Some(HOME_ARTICLE)`，否則 `None`。僅檢查根層檔案，不追蹤符號連結
+/// （與 `walk_files` 一致，避免讀取 article/ 外內容）。
+pub fn home_article(article_dir: &Path) -> Option<String> {
+    let path = article_dir.join(HOME_ARTICLE);
+    match path.metadata() {
+        Ok(meta) if meta.is_file() => Some(HOME_ARTICLE.to_string()),
+        _ => None,
+    }
 }
 
 /// 依排序後的扁平文章列表構建樹狀結構（根為 Folder）。
@@ -208,6 +228,8 @@ mod tests {
         fs::write(d2.join("new.md"), "# new").unwrap();
         // 非 .md 忽略
         fs::write(dir.join("notes.txt"), "ignore me").unwrap();
+        // 根文章（index.md）不出現在列表
+        fs::write(dir.join("index.md"), "# 首頁").unwrap();
 
         let articles = scan_articles(&dir);
         let titles: Vec<&str> = articles.iter().map(|a| a.title.as_str()).collect();
@@ -215,6 +237,51 @@ mod tests {
         assert_eq!(articles[2].date.as_deref(), Some("2026-07-30"));
         assert_eq!(articles[3].date.as_deref(), Some("2025-01-01"));
         assert_eq!(articles[0].path, "alpha.md");
+        // 根文章 index.md 被過濾
+        assert!(
+            articles.iter().all(|a| a.path != HOME_ARTICLE),
+            "根文章 index.md 不應出現在列表"
+        );
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_scan_filters_only_root_index() {
+        // 僅根層的 index.md 是根文章；子目錄下的 index.md 是一般文章，應保留
+        let dir = temp_article_dir("root_index");
+        let sub = dir.join("knowledges").join("20260730");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(dir.join("index.md"), "# 首頁").unwrap();
+        fs::write(sub.join("index.md"), "# 子目錄 index").unwrap();
+        fs::write(sub.join("new.md"), "# new").unwrap();
+
+        let articles = scan_articles(&dir);
+        let paths: Vec<&str> = articles.iter().map(|a| a.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec!["knowledges/20260730/index.md", "knowledges/20260730/new.md"]
+        );
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_home_article() {
+        let dir = temp_article_dir("home");
+
+        // 不存在 → None
+        assert_eq!(home_article(&dir), None);
+
+        // 根層 index.md → Some("index.md")
+        fs::write(dir.join(HOME_ARTICLE), "# 首頁").unwrap();
+        assert_eq!(home_article(&dir).as_deref(), Some(HOME_ARTICLE));
+
+        // 目錄而非檔案 → None
+        let sub = dir.join("index.md");
+        fs::remove_file(&sub).unwrap();
+        fs::create_dir(&sub).unwrap();
+        assert_eq!(home_article(&dir), None);
 
         fs::remove_dir_all(&dir).unwrap();
     }
