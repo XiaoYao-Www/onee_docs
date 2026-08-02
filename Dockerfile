@@ -40,7 +40,6 @@ COPY --from=planner /build/recipe.json recipe.json
 # 這層可以直接使用 cache
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target \
     cargo chef cook \
     --release \
     --recipe-path recipe.json
@@ -54,7 +53,6 @@ COPY . .
 # 編譯正式版本
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target \
     cargo build \
     --release \
     --locked
@@ -69,7 +67,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM debian:bookworm-slim AS runtime
 
 
-LABEL org.opencontainers.image.title="daily-knowledge"
+LABEL org.opencontainers.image.title="onee-docs"
 
 
 # 建立非 root 使用者
