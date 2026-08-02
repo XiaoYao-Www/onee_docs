@@ -17,8 +17,6 @@ mod articles;
 mod cache;
 mod config;
 mod search_index;
-
-use articles::Article;
 use axum::extract::{ConnectInfo, Query, Request, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::http::{HeaderValue, StatusCode};
@@ -169,14 +167,16 @@ fn json_error(status: StatusCode, message: &'static str) -> Response {
 
 #[derive(Serialize)]
 struct ArticlesResponse {
-    articles: Vec<Article>,
+    articles: articles::TreeNode,
 }
 
 async fn handle_articles(State(state): State<AppState>) -> Response {
     // 從快取取得文章列表（由 notify + 定時掃描保持新鮮）
     let articles = state.cache.get_articles().await;
+    // 轉為樹狀結構回傳，前端直接使用（不再自行 buildTree）
+    let tree = articles::build_tree(&articles);
     // 與 Python `json.dumps(..., ensure_ascii=False, indent=2)` 一致
-    let body = match serde_json::to_string_pretty(&ArticlesResponse { articles }) {
+    let body = match serde_json::to_string_pretty(&ArticlesResponse { articles: tree }) {
         Ok(body) => body,
         Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "內部錯誤"),
     };
@@ -196,6 +196,8 @@ async fn handle_articles(State(state): State<AppState>) -> Response {
 #[derive(Serialize)]
 struct ConfigResponse {
     allow_markdown_html: bool,
+    site_title: String,
+    page_title: String,
 }
 
 /// 回傳前端渲染所需的設定（僅暴露最小必要欄位，不洩漏埠號/限速等內部細節）
@@ -208,6 +210,8 @@ async fn handle_config(State(state): State<AppState>) -> Response {
         ],
         Json(ConfigResponse {
             allow_markdown_html: state.config.allow_markdown_html,
+            site_title: state.config.site_title.clone(),
+            page_title: state.config.page_title.clone(),
         }),
     )
         .into_response()
@@ -529,7 +533,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     cache.spawn_watcher();
-    cache.spawn_periodic_scan(cache::PERIODIC_SCAN_INTERVAL);
+    // 防護：tokio::time::interval(0) 會 panic，配置為 0 時退為 1 秒
+    let scan_interval = Duration::from_secs(config.periodic_scan_interval_secs.max(1));
+    cache.spawn_periodic_scan(scan_interval);
 
     let app = build_app(AppState::new(
         cache,
@@ -545,7 +551,7 @@ async fn main() -> anyhow::Result<()> {
     println!("   📁 文章目錄: {}", ARTICLE_DIR.display());
     println!(
         "   💾 文章快取: notify 即時監控 + {} 秒定時掃描",
-        cache::PERIODIC_SCAN_INTERVAL.as_secs()
+        scan_interval.as_secs()
     );
     println!("   ⚡ 按 Ctrl+C 停止伺服器");
 
@@ -739,11 +745,20 @@ mod tests {
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        let articles = json["articles"].as_array().expect("articles 應為陣列");
-        assert!(!articles.is_empty());
-        // 有日期的文章應在無日期之後
-        let first = &articles[0];
-        assert!(first["date"].is_null());
+        let tree = &json["articles"];
+        // 樹狀結構：根為 folder，含無日期檔案與日期目錄
+        assert_eq!(tree["type"], "folder", "根節點應為 folder");
+        let children = tree["children"]
+            .as_object()
+            .expect("根 children 應為物件");
+        assert!(children.contains_key("關於本站.md"), "應含無日期檔案節點");
+        assert!(children.contains_key("knowledges"), "應含日期目錄節點");
+        let file_node = &children["關於本站.md"];
+        assert_eq!(file_node["type"], "file", "檔案節點 type 應為 file");
+        assert!(
+            file_node["article"]["date"].is_null(),
+            "無日期文章 date 應為 null"
+        );
 
         // 搜尋（檔名匹配）
         let req = Request::builder()
@@ -783,6 +798,9 @@ mod tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["allow_markdown_html"], serde_json::json!(false));
+        // 標題預設值（與 config 模組預設一致）
+        assert_eq!(json["site_title"], serde_json::json!("每日知識庫"));
+        assert_eq!(json["page_title"], serde_json::json!("每日知識庫"));
 
         fs::remove_dir_all(&dir).unwrap();
     }

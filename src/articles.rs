@@ -1,5 +1,6 @@
 //! 文章掃描邏輯 — 行為與原 Python 版 `server.py` / `scripts/generate_index.py` 一致
 
+use indexmap::IndexMap;
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,6 +11,22 @@ pub struct Article {
     pub title: String,
     pub path: String,
     pub date: Option<String>,
+}
+
+/// 文章樹節點：文件或目錄。序列化後與前端 `buildTree` 產生的節點格式同構，
+/// 前端可直接使用（根為 `Folder` 節點，渲染其 `children`）：
+///   file:   `{"type":"file","article":{"title","path","date"}}`
+///   folder: `{"type":"folder","children":{"<路徑段>": <節點>, ...}}`
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum TreeNode {
+    File {
+        article: Article,
+    },
+    Folder {
+        /// 以 `IndexMap` 保持插入序：與 `scan_articles` 排序後的列表順序一致
+        children: IndexMap<String, TreeNode>,
+    },
 }
 
 /// 從檔名推斷標題：去掉 `.md`，將 `-`/`_` 取代為空格。
@@ -109,6 +126,37 @@ pub(crate) fn scan_articles(article_dir: &Path) -> Vec<Article> {
     no_date
 }
 
+/// 依排序後的扁平文章列表構建樹狀結構（根為 Folder）。
+/// 依 `articles` 的順序逐篇插入路徑段，`IndexMap` 保留插入序，
+/// 因此渲染順序與現有（前端 `buildTree` 依列表序插入）完全一致。
+pub fn build_tree(articles: &[Article]) -> TreeNode {
+    let mut root: IndexMap<String, TreeNode> = IndexMap::new();
+    for article in articles {
+        let parts: Vec<&str> = article.path.split('/').collect();
+        let mut node = &mut root;
+        for (i, part) in parts.iter().enumerate() {
+            // 最後一段為檔案；其餘為目錄
+            if i == parts.len() - 1 {
+                node.insert(part.to_string(), TreeNode::File {
+                    article: article.clone(),
+                });
+                break;
+            }
+            let target = node
+                .entry(part.to_string())
+                .or_insert_with(|| TreeNode::Folder {
+                    children: IndexMap::new(),
+                });
+            match target {
+                TreeNode::Folder { children } => node = children,
+                // 文件與目錄同名：掃描邏輯不會產生此情形，直接停止該路徑
+                TreeNode::File { .. } => break,
+            }
+        }
+    }
+    TreeNode::Folder { children: root }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +224,90 @@ mod tests {
         let dir =
             std::env::temp_dir().join(format!("daily_knowledge_no_such_{}", std::process::id()));
         assert!(scan_articles(&dir).is_empty());
+    }
+
+    #[test]
+    fn test_build_tree_json_shape() {
+        // 與前端 buildTree 產生的結構同構：file/folder type + article/children
+        let articles = vec![
+            Article {
+                title: "關於本站".to_string(),
+                path: "關於本站.md".to_string(),
+                date: None,
+            },
+            Article {
+                title: "learning notes".to_string(),
+                path: "knowledges/20260730/learning-notes.md".to_string(),
+                date: Some("2026-07-30".to_string()),
+            },
+        ];
+        let tree = build_tree(&articles);
+        let value = serde_json::to_value(&tree).unwrap();
+        let expected = serde_json::json!({
+            "type": "folder",
+            "children": {
+                "關於本站.md": {
+                    "type": "file",
+                    "article": { "title": "關於本站", "path": "關於本站.md", "date": null }
+                },
+                "knowledges": {
+                    "type": "folder",
+                    "children": {
+                        "20260730": {
+                            "type": "folder",
+                            "children": {
+                                "learning-notes.md": {
+                                    "type": "file",
+                                    "article": {
+                                        "title": "learning notes",
+                                        "path": "knowledges/20260730/learning-notes.md",
+                                        "date": "2026-07-30"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn test_build_tree_preserves_scan_order() {
+        // 真實掃描排序 → 建樹 → 每層順序與排序列表一致
+        let dir = temp_article_dir("tree");
+        // 無日期（置頂，標題升序）
+        fs::write(dir.join("zeta.md"), "# zeta").unwrap();
+        fs::write(dir.join("alpha.md"), "# alpha").unwrap();
+        // 有日期（日期降序）
+        let d1 = dir.join("knowledges").join("20250101");
+        let d2 = dir.join("knowledges").join("20260730");
+        fs::create_dir_all(&d1).unwrap();
+        fs::create_dir_all(&d2).unwrap();
+        fs::write(d1.join("old.md"), "# old").unwrap();
+        fs::write(d2.join("new.md"), "# new").unwrap();
+
+        let articles = scan_articles(&dir);
+        let tree = build_tree(&articles);
+        let root = match &tree {
+            TreeNode::Folder { children } => children,
+            _ => panic!("根應為 folder"),
+        };
+
+        // 根層：無日期檔案（alpha, zeta）在前，目錄 knowledges 在後
+        let root_names: Vec<&String> = root.keys().collect();
+        assert_eq!(root_names, vec!["alpha.md", "zeta.md", "knowledges"]);
+        assert!(matches!(root["alpha.md"], TreeNode::File { .. }));
+
+        // knowledges 下：日期目錄降序（20260730 在 20250101 前）
+        let knowledges = match &root["knowledges"] {
+            TreeNode::Folder { children } => children,
+            _ => panic!("knowledges 應為 folder"),
+        };
+        let k_names: Vec<&String> = knowledges.keys().collect();
+        assert_eq!(k_names, vec!["20260730", "20250101"]);
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

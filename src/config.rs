@@ -20,6 +20,12 @@ pub const DEFAULT_RATE_LIMIT_WINDOW_SECS: u64 = 60;
 pub const DEFAULT_RATE_LIMIT_MAX_REQUESTS: u32 = 300;
 /// 預設搜尋結果上限
 pub const DEFAULT_SEARCH_MAX_RESULTS: usize = 20;
+/// 預設定時掃描間隔（秒）：兜底 notify 漏報
+pub const DEFAULT_PERIODIC_SCAN_INTERVAL_SECS: u64 = 3600;
+/// 預設導覽列（側邊欄）標題
+pub const DEFAULT_SITE_TITLE: &str = "每日知識庫";
+/// 預設瀏覽器分頁標題
+pub const DEFAULT_PAGE_TITLE: &str = "每日知識庫";
 
 // ── 設定結構 ────────────────────────────────────────────
 
@@ -37,6 +43,12 @@ pub struct ServerConfig {
     pub rate_limit: RateLimitConfig,
     /// 搜尋行為設定
     pub search: SearchConfig,
+    /// 定時掃描文章目錄間隔（秒）
+    pub periodic_scan_interval_secs: u64,
+    /// 導覽列（側邊欄）標題
+    pub site_title: String,
+    /// 瀏覽器分頁標題
+    pub page_title: String,
 }
 
 /// API 限速設定（每 IP 滑動窗口）
@@ -65,6 +77,9 @@ impl Default for ServerConfig {
             max_file_size: DEFAULT_MAX_FILE_SIZE,
             rate_limit: RateLimitConfig::default(),
             search: SearchConfig::default(),
+            periodic_scan_interval_secs: DEFAULT_PERIODIC_SCAN_INTERVAL_SECS,
+            site_title: DEFAULT_SITE_TITLE.to_string(),
+            page_title: DEFAULT_PAGE_TITLE.to_string(),
         }
     }
 }
@@ -140,6 +155,9 @@ mod tests {
         assert_eq!(c.rate_limit.window_secs, 60);
         assert_eq!(c.rate_limit.max_requests, 300);
         assert_eq!(c.search.max_results, 20);
+        assert_eq!(c.site_title, DEFAULT_SITE_TITLE);
+        assert_eq!(c.page_title, DEFAULT_PAGE_TITLE);
+        assert_eq!(c.periodic_scan_interval_secs, DEFAULT_PERIODIC_SCAN_INTERVAL_SECS);
     }
 
     #[test]
@@ -168,6 +186,9 @@ mod tests {
         assert_eq!(c.port, None); // 未指定
         assert_eq!(c.max_file_size, DEFAULT_MAX_FILE_SIZE); // 回退預設
         assert_eq!(c.search.max_results, 20);
+        assert_eq!(c.site_title, DEFAULT_SITE_TITLE); // 未指定 → 回退預設
+        assert_eq!(c.page_title, DEFAULT_PAGE_TITLE);
+        assert_eq!(c.periodic_scan_interval_secs, DEFAULT_PERIODIC_SCAN_INTERVAL_SECS);
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -190,6 +211,9 @@ mod tests {
 port = 9000
 allow_markdown_html = true
 max_file_size = 1048576
+site_title = "我的知識庫"
+page_title = "我的知識庫"
+periodic_scan_interval_secs = 7200
 
 [rate_limit]
 window_secs = 30
@@ -205,6 +229,9 @@ max_results = 5
         assert_eq!(c.port, Some(9000));
         assert!(c.allow_markdown_html);
         assert_eq!(c.max_file_size, 1048576);
+        assert_eq!(c.site_title, "我的知識庫");
+        assert_eq!(c.page_title, "我的知識庫");
+        assert_eq!(c.periodic_scan_interval_secs, 7200);
         assert_eq!(c.rate_limit.window_secs, 30);
         assert_eq!(c.rate_limit.max_requests, 100);
         assert_eq!(c.search.max_results, 5);
@@ -241,5 +268,83 @@ max_results = 5
         // 無效 CLI → 退回下一層
         assert_eq!(resolve_port(Some("abc"), Some("8080"), Some(9000)), 8080);
         assert_eq!(resolve_port(Some("99999"), None, Some(9000)), 9000);
+    }
+
+    #[test]
+    fn test_top_level_keys_after_table_are_swallowed() {
+        // 防回歸: TOML 規範中, [search] 表後的裸 key 屬於該表。
+        // 若 site_title/page_title 誤放在表後, 會被歸入 [search] 而回退默認值。
+        let dir = std::env::temp_dir().join(format!(
+            "daily_knowledge_cfg_table_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("server_config.toml");
+        std::fs::write(
+            &path,
+            r#"
+port = 9000
+allow_markdown_html = true
+
+[rate_limit]
+window_secs = 30
+max_requests = 100
+
+[search]
+max_results = 5
+site_title = "誤入表內"
+page_title = "誤入表內"
+"#,
+        )
+        .unwrap();
+
+        let c = ServerConfig::load(&path).unwrap();
+        // 被 [search] 吞掉 → 頂層欄位回退默認值
+        assert_eq!(c.site_title, DEFAULT_SITE_TITLE);
+        assert_eq!(c.page_title, DEFAULT_PAGE_TITLE);
+        assert_eq!(c.search.max_results, 5);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_top_level_keys_before_tables_apply() {
+        // 正確寫法: 頂層欄位必須放在所有 [表] 定義之前才會生效
+        let dir = std::env::temp_dir().join(format!(
+            "daily_knowledge_cfg_top_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("server_config.toml");
+        std::fs::write(
+            &path,
+            r#"
+site_title = "我的知識庫"
+page_title = "我的知識庫"
+
+[rate_limit]
+window_secs = 30
+
+[search]
+max_results = 5
+"#,
+        )
+        .unwrap();
+
+        let c = ServerConfig::load(&path).unwrap();
+        assert_eq!(c.site_title, "我的知識庫");
+        assert_eq!(c.page_title, "我的知識庫");
+        assert_eq!(c.rate_limit.window_secs, 30);
+        assert_eq!(c.search.max_results, 5);
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

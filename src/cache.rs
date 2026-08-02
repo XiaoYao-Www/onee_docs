@@ -9,9 +9,7 @@ use tokio::sync::RwLock;
 
 /// 收到檔案變動事件後的靜默期（debounce）：期間內合併事件，避免頻繁全量重掃
 const DEBOUNCE_DURATION: Duration = Duration::from_secs(2);
-/// 定時掃描間隔：兜底 notify 漏報（如 Docker overlay 掛載、部分平台限制）
-/// 註：用 from_secs(3600) 而非 from_hours(1)——後者在 stable Rust 上尚非 const fn
-pub const PERIODIC_SCAN_INTERVAL: Duration = Duration::from_secs(3600);
+// 定時掃描間隔由設定檔 `periodic_scan_interval_secs` 驅動（見 config.rs）
 
 /// refresh 回呼型別：每次掃描後以最新文章列表呼叫（供搜尋索引等下游重建）
 type RefreshHook = Box<dyn Fn(Vec<Article>) + Send + Sync>;

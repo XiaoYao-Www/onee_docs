@@ -99,17 +99,15 @@ COPY script.js ./
 COPY vendor ./vendor
 
 
-# 預設設定
-COPY appdata/config/server_config.toml \
-     ./appdata/config/server_config.toml
-
-
+# 資料目錄：appdata/（文章 + 設定）由使用者掛載/創建，不隨鏡像附帶。
+# 未掛載時伺服器以內建預設值啟動，文章目錄為空。
 RUN mkdir -p \
         /app/appdata/article \
+    && mkdir -p \
+        /app/appdata/config \
     && chown -R \
         appuser:appgroup \
         /app
-
 
 
 ENV PORT=8765

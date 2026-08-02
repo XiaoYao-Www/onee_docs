@@ -1,12 +1,19 @@
 # ─────────────────────────────────────────────────────────
-# 每日知識庫 — 伺服器設定
-# 路徑：appdata/config/server_config.toml
-# 此檔案為選配：刪除或留空欄位時使用內建預設值。
+# 每日知識庫 — 伺服器設定範例（example template）
+#
+# 安裝方式：
+#   1. 建立資料目錄（appdata/ 不會隨倉庫或 Docker 鏡像附帶）：
+#        mkdir -p appdata/config appdata/article
+#   2. 複製本檔為 appdata/config/server_config.toml：
+#        cp server_config.example.toml appdata/config/server_config.toml
+#   3. 依需求修改下方欄位後啟動伺服器。
+#
+# 本檔為選配：不提供設定檔時，伺服器使用內建預設值（見各欄位註解）。
 # 所有欄位皆可省略；語法錯誤會導致伺服器拒絕啟動。
 # ─────────────────────────────────────────────────────────
 
 # 監聽埠號（省略時：命令列 --port > 環境變數 PORT > 預設 8765）
-# port = 8765
+port = 8765
 
 # 是否允許 Markdown 內嵌 HTML 原樣渲染。
 # false（預設，安全）：文章中的 <script>、<img onerror> 等 HTML 會被清除，
@@ -16,16 +23,23 @@
 allow_markdown_html = false
 
 # 單篇文章讀取上限（位元組），預設 5MB
-# max_file_size = 5242880
+max_file_size = 5242880
+periodic_scan_interval_secs = 3600
+
+# ── 網站外觀（注意：頂層欄位須放在所有 [表] 定義之前，否則會被歸入該表） ──
+# 導覽列（側邊欄）標題，預設「每日知識庫」
+site_title = "每日知識庫"
+# 瀏覽器分頁標題，預設「每日知識庫」
+page_title = "每日知識庫"
 
 # ── API 限速（每 IP 滑動窗口，防止濫用耗盡伺服器資源） ──
-# [rate_limit]
+[rate_limit]
 # 窗口長度（秒）
-# window_secs = 60
+window_secs = 60
 # 窗口內允許的最大請求數（僅對 /api/* 生效）
-# max_requests = 300
+max_requests = 300
 
 # ── 搜尋行為 ──
-# [search]
+[search]
 # 搜尋結果上限
-# max_results = 20
+max_results = 20

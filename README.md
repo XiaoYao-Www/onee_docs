@@ -17,14 +17,15 @@
 
 ```
 daily_knowledge/
-├── appdata/                     ← 資料目錄（文章 + 設定）
-│   ├── article/                 ← 文章目錄（私有內容，預設不隨倉庫提交）
+├── appdata/                     ← 資料目錄（文章 + 設定）— 由使用者自行創建或掛載，不隨倉庫提交
+│   ├── article/                 ← 文章目錄（放置你的 .md 文章）
 │   │   ├── 關於本站.md
 │   │   └── knowledges/
 │   │       └── 20260730/        ← 日期目錄（YYYYMMDD）
 │   │           └── learning-notes.md
 │   └── config/
-│       └── server_config.toml   ← 伺服器設定（含註解的預設模板）
+│       └── server_config.toml   ← 伺服器設定（從 server_config.example.toml 複製）
+├── server_config.example.toml   ← 設定範例模板（安裝時複製為 appdata/config/server_config.toml）
 ├── vendor/                      ← 本地化前端函式庫（marked + DOMPurify，固定版本）
 ├── src/                         ← Rust 後端原始碼
 ├── index.html / style.css / script.js
@@ -41,6 +42,11 @@ daily_knowledge/
 ### 本地執行（需要 Rust toolchain）
 
 ```bash
+# 第一次安裝：建立資料目錄並複製設定範例（appdata/ 不隨倉庫提供）
+mkdir -p appdata/article appdata/config
+cp server_config.example.toml appdata/config/server_config.toml
+# 依需求編輯 appdata/config/server_config.toml（不編輯也能用預設值啟動）
+
 # 預設埠號 8765
 cargo run
 
@@ -60,7 +66,7 @@ cargo build --release
 ### Docker 部署
 
 ```bash
-# 基本執行（掛載你的文章目錄）
+# 基本執行（掛載你的文章目錄；鏡像本身不含 appdata，未掛載設定時以預設值啟動）
 docker run -d \
   --name daily-knowledge \
   -p 8765:8765 \
@@ -68,11 +74,26 @@ docker run -d \
   ghcr.io/你的帳號/倉庫:latest
 ```
 
-> ⚠️ 容器內的 `appdata/article/` 目錄為空，請務必透過 `-v` 掛載你的 `.md` 文章目錄。容器以 UID 1001（`appuser`）執行，若掛載後無法讀取文章，請確保宿主目錄對 UID 1001 具備讀取權限（如 `chmod -R o+r /你的文章路徑`）。
+> ⚠️ 容器內的 `appdata/` 目錄為空，請務必透過 `-v` 掛載你的 `.md` 文章目錄。容器以 UID 1001（`appuser`）執行，若掛載後無法讀取文章，請確保宿主目錄對 UID 1001 具備讀取權限（如 `chmod -R o+r /你的文章路徑`）。
+
+若要自訂伺服器設定（如網站標題、限速），另掛載你的設定檔：
+
+```bash
+-v /你的設定路徑/server_config.toml:/app/appdata/config/server_config.toml
+```
+
+> 設定檔掛載同樣需對 UID 1001（`appuser`）具備讀取權限；若不掛載設定檔，容器以內建預設值啟動。
 
 ## ⚙️ 設定檔
 
-設定檔位於 `appdata/config/server_config.toml`，為**選配**：檔案不存在或欄位省略時使用內建預設值；語法錯誤會導致伺服器拒絕啟動。
+`appdata/config/server_config.toml` 為**選配**：檔案不存在或欄位省略時使用內建預設值；語法錯誤會導致伺服器拒絕啟動。
+
+首次安裝請複製範例模板再編輯：
+
+```bash
+mkdir -p appdata/config
+cp server_config.example.toml appdata/config/server_config.toml
+```
 
 | 欄位 | 預設值 | 說明 |
 |------|--------|------|
@@ -82,6 +103,9 @@ docker run -d \
 | `[rate_limit] window_secs` | 60 | API 限速窗口長度（秒） |
 | `[rate_limit] max_requests` | 300 | 窗口內每 IP 允許的最大 API 請求數 |
 | `[search] max_results` | 20 | 搜尋結果上限 |
+| `periodic_scan_interval_secs` | 3600 | 定時掃描文章目錄的間隔（秒） |
+| `site_title` | "每日知識庫" | 導覽列（側邊欄）標題 |
+| `page_title` | "每日知識庫" | 瀏覽器分頁標題 |
 
 ### ⚠️ `allow_markdown_html` 風險說明
 
@@ -97,7 +121,7 @@ docker run -d \
 | `GET /api/articles` | 回傳文章列表 JSON（標題、路徑、日期） |
 | `GET /api/article?path=xxx.md` | 回傳指定 `.md` 檔案內容（純文字） |
 | `GET /api/search?q=關鍵字` | 搜尋文章（檔名 + 內容），Tantivy + jieba 分詞、BM25 相關性排序，結果上限可設定 |
-| `GET /api/config` | 回傳前端渲染所需設定（目前僅 `allow_markdown_html`） |
+| `GET /api/config` | 回傳前端渲染所需設定（`allow_markdown_html`、`site_title`、`page_title`） |
 | `GET /` 靜態檔案 | `index.html`、`style.css`、`script.js`、`vendor/*` |
 
 ## 🛠️ 開發
@@ -131,7 +155,7 @@ cargo audit
 - **供應鏈安全**：前端函式庫本地化並固定版本；CSP `script-src 'self'` 阻止外部腳本
 - **安全回應頭**：`Content-Security-Policy`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`、`Referrer-Policy: no-referrer`
 - **DoS 防護**：檔案大小上限（`take` 限流讀取，無 TOCTOU 窗口）、API 每 IP 滑動窗口限速、搜尋與索引重建的同步 I/O 置於 `spawn_blocking`、搜尋請求本身為純記憶體查詢
-- **Docker**：多階段構建、非 root 使用者執行、`appdata/` 僅掛載文章目錄
+- **Docker**：多階段構建、非 root 使用者執行、`appdata/`（文章 + 設定）由使用者掛載
 
 ### 部署安全建議
 

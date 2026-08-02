@@ -27,7 +27,7 @@ const ICON_LINK = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18
 const ICON_CHECK = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
 
 let currentFontSize = 16;
-let allArticles = [];
+let allArticles = {};
 // 由 /api/config 提供；預設 false（安全）：文章中的 HTML 會被 DOMPurify 清除
 let allowMarkdownHtml = false;
 
@@ -79,6 +79,15 @@ async function loadConfig() {
         if (!resp.ok) return;
         const data = await resp.json();
         allowMarkdownHtml = !!data.allow_markdown_html;
+
+        // 標題設定：以設定檔為準，API 未提供時保留 HTML 內建值
+        const siteTitleEl = document.getElementById('site-title');
+        const pageTitleEl = document.getElementById('page-title');
+        if (data.site_title && siteTitleEl) siteTitleEl.textContent = data.site_title;
+        if (data.page_title) {
+            document.title = data.page_title;
+            if (pageTitleEl) pageTitleEl.textContent = data.page_title;
+        }
     } catch { /* 保持預設 false */ }
 }
 
@@ -88,7 +97,7 @@ async function loadArticleIndex() {
         const response = await fetch('/api/articles');
         if (!response.ok) throw new Error('無法載入文章索引');
         const data = await response.json();
-        allArticles = data.articles || [];
+        allArticles = data.articles || {};
         renderArticleList();
         restoreArticleFromURL();
     } catch (error) {
@@ -146,28 +155,17 @@ function setupSettings() {
     });
 }
 
-function buildTree(articles) {
-    const root = {};
-    for (const article of articles) {
-        const parts = article.path.split('/');
-        let node = root;
-        parts.forEach((part, index) => {
-            const isFile = index === parts.length - 1;
-            if (isFile) {
-                node[part] = {
-                    type: 'file',
-                    article
-                };
-            } else {
-                node[part] ??= {
-                    type: 'folder',
-                    children: {}
-                };
-                node = node[part].children;
-            }
-        });
+// 在樹狀結構中依 path 遞迴查找文章（後端已回傳樹，前端直接使用）
+function findArticle(node, path) {
+    for (const [name, item] of Object.entries(node)) {
+        if (item.type === 'file') {
+            if (item.article.path === path) return item.article;
+        } else if (item.type === 'folder') {
+            const found = findArticle(item.children, path);
+            if (found) return found;
+        }
     }
-    return root;
+    return null;
 }
 
 function renderTree(parent, node, depth = 0) {
@@ -374,8 +372,8 @@ function renderTree(parent, node, depth = 0) {
 // ── 渲染文章列表 (實裝完美抽屜動畫) ─────────────────────────────
 function renderArticleList() {
     articleListElement.innerHTML = "";
-    const tree = buildTree(allArticles);
-    renderTree(articleListElement, tree);
+    // 後端已回傳樹狀結構：根為 folder 節點，渲染其 children
+    renderTree(articleListElement, allArticles.children);
 }
 
 function setupShareButton() {
@@ -473,7 +471,7 @@ function renderSearchResults(results) {
         }
 
         div.addEventListener('click', () => {
-            const article = allArticles.find(a => a.path === r.path);
+            const article = findArticle(allArticles.children, r.path);
             if (article) {
                 loadMarkdown(article);
                 closeSearch();
@@ -498,7 +496,7 @@ function restoreArticleFromURL() {
         const path = params.get('article');
         if (!path) return;
         const decoded = decodeURIComponent(path);
-        const article = allArticles.find(a => a.path === decoded);
+        const article = findArticle(allArticles.children, decoded);
         if (article) loadMarkdown(article);
     } catch { }
 }

@@ -24,10 +24,7 @@ Thumbs.db
 
 
 # Runtime data
-appdata/article
-appdata/*.db
-appdata/*.sqlite
-appdata/*.sqlite3
+appdata
 
 
 # Logs
